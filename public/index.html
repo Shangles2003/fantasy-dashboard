@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fantasy HQ</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🏈</span>
+      <div>
+        <h1>Fantasy HQ</h1>
+        <div class="sub" id="week-label">Loading…</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="updated" id="updated">—</span>
+      <button class="btn" id="btn-refresh" title="Refresh now">↻ Refresh</button>
+      <button class="btn" id="btn-settings">⚙ Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="banner" class="banner" hidden></section>
+
+    <section class="games" id="games"></section>
+
+    <section>
+      <div class="section-head">
+        <h2>My matchups</h2>
+        <span class="muted" id="matchup-summary"></span>
+      </div>
+      <div class="cards" id="cards"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>My players</h2>
+        <div class="filters">
+          <div class="seg" id="state-filter">
+            <button data-state="all" class="active">All</button>
+            <button data-state="in">● Live</button>
+            <button data-state="pre">Upcoming</button>
+            <button data-state="post">Final</button>
+          </div>
+          <label class="check"><input type="checkbox" id="starters-only" /> Starters only</label>
+          <label class="check"><input type="checkbox" id="show-against" /> Show opponents' players</label>
+          <input type="search" id="search" placeholder="Search player / team / league" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="players" id="players">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Game</th>
+              <th>Stat line</th>
+              <th>Leagues &amp; points</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty" id="players-empty" hidden>No players match.</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- League detail drawer -->
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <div id="drawer-title"></div>
+      <button class="btn icon" id="drawer-close" aria-label="Close">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <!-- Settings modal -->
+  <div class="modal-backdrop" id="settings" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Settings</h2>
+        <button class="btn icon" id="settings-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted">Connect each fantasy app you use. Credentials are stored only in <code>config.json</code> on this computer.</p>
+        <div id="accounts"></div>
+        <div class="add-row">
+          <span>Add:</span>
+          <button class="btn" data-add="sleeper">Sleeper</button>
+          <button class="btn" data-add="espn">ESPN</button>
+          <button class="btn" data-add="yahoo">Yahoo</button>
+        </div>
+        <details class="help">
+          <summary>How to get credentials</summary>
+          <h4>Sleeper</h4>
+          <p>Just your Sleeper username. No login needed.</p>
+          <h4>ESPN</h4>
+          <p>Log in to fantasy.espn.com in your browser, open DevTools → Application → Cookies → <code>https://fantasy.espn.com</code>, and copy the values of <code>espn_s2</code> and <code>SWID</code>. Leagues are discovered automatically; if that fails, paste league IDs (from the league URL) separated by commas.</p>
+          <h4>Yahoo</h4>
+          <p>Create an app at <a href="https://developer.yahoo.com/apps/create/" target="_blank" rel="noopener">developer.yahoo.com/apps</a> (Installed Application, API permission "Fantasy Sports – Read"). Paste the Client ID and Client Secret, save, then click <b>Connect Yahoo</b>, approve, and paste the code Yahoo shows you.</p>
+        </details>
+        <h3>Refresh</h3>
+        <div class="grid2">
+          <label>During live games (sec) <input type="number" id="refresh-live" min="10" /></label>
+          <label>Otherwise (sec) <input type="number" id="refresh-idle" min="30" /></label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="muted" id="settings-status"></span>
+        <button class="btn primary" id="settings-save">Save &amp; refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

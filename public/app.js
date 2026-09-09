@@ -1,0 +1,374 @@
+/* Fantasy HQ frontend: polls /api/state and renders everything. No framework. */
+(() => {
+  'use strict';
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmtPts = (n) => (n == null ? '—' : Number(n).toFixed(2).replace(/\.?0+$/, '') || '0');
+  const PLATFORM_NAME = { sleeper: 'Sleeper', espn: 'ESPN', yahoo: 'Yahoo' };
+
+  let state = null;
+  let config = null;
+  let filters = { state: 'all', startersOnly: false, showAgainst: false, q: '' };
+  let openLeague = null;
+
+  // ---------- helpers ----------
+  function kickoff(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (sameDay) return `Today ${time}`;
+    return `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  }
+
+  function gameLabel(g) {
+    if (!g || g.state === 'none') return '<span class="gstate post">No game</span>';
+    if (g.state === 'in') {
+      const ball = g.hasBall ? ' <span class="ball" title="Has the ball">🏈</span>' : '';
+      return `<span class="gstate in">● ${esc(g.opponent)} · Q${g.period} ${esc(g.clock)}${ball}</span><div class="pmeta">${esc(g.score)}</div>`;
+    }
+    if (g.state === 'post') return `<span class="gstate post">Final · ${esc(g.opponent)}</span><div class="pmeta">${esc(g.score)}</div>`;
+    return `<span class="gstate pre">${esc(g.opponent)} · ${esc(kickoff(g.start))}</span>`;
+  }
+
+  function ago(iso) {
+    if (!iso) return 'never';
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  }
+
+  // ---------- render ----------
+  function render() {
+    if (!state) return;
+    renderHeader();
+    renderBanner();
+    renderGames();
+    renderCards();
+    renderPlayers();
+    if (openLeague) renderDrawer(openLeague);
+  }
+
+  function renderHeader() {
+    const n = state.nfl || {};
+    const typ = { 1: 'Preseason', 2: '', 3: 'Playoffs' }[n.seasonType] || '';
+    $('#week-label').textContent = n.week ? `${n.season} · ${typ ? typ + ' ' : ''}Week ${n.week}${n.anyLive ? ' · games in progress' : ''}` : 'NFL week unknown';
+    $('#updated').textContent = state.refreshing ? 'refreshing…' : `updated ${ago(state.updatedAt)}`;
+  }
+
+  function renderBanner() {
+    const b = $('#banner');
+    const problems = [];
+    for (const a of state.accounts || []) if (a.error) problems.push(`${PLATFORM_NAME[a.platform] || a.platform} (${a.label}): ${a.error}`);
+    for (const w of state.warnings || []) problems.push(w);
+    if (!config) {
+      b.hidden = true;
+      return;
+    }
+    if (!(config.accounts || []).length) {
+      b.className = 'banner info';
+      b.innerHTML = 'No fantasy accounts connected yet. <a href="#" id="banner-settings">Open Settings</a> to add Sleeper, ESPN or Yahoo.';
+      b.hidden = false;
+      $('#banner-settings').onclick = (e) => { e.preventDefault(); openSettings(); };
+      return;
+    }
+    if (!problems.length) {
+      b.hidden = true;
+      return;
+    }
+    b.className = 'banner';
+    b.innerHTML = `<b>Some sources had problems</b><ul>${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`;
+    b.hidden = false;
+  }
+
+  function renderGames() {
+    const el = $('#games');
+    const games = (state.nfl && state.nfl.games) || [];
+    if (!games.length) {
+      el.innerHTML = '<div class="muted">No NFL games on the scoreboard.</div>';
+      return;
+    }
+    el.innerHTML = games
+      .map((g) => {
+        const status = g.state === 'in' ? `● Q${g.period} ${esc(g.clock)}` : g.state === 'post' ? 'Final' : kickoff(g.start);
+        const ball = (t) => (g.state === 'in' && g.possession === t ? ' <span class="ball">🏈</span>' : '');
+        const lead = g.state !== 'pre' ? (g.away.score > g.home.score ? 'away' : g.home.score > g.away.score ? 'home' : '') : '';
+        return `<div class="game ${g.state}" title="${esc(g.downDistance || '')}">
+          <div class="teams"><span>${lead === 'away' ? '<b>' : ''}${esc(g.away.team)} ${g.state !== 'pre' ? g.away.score : ''}${lead === 'away' ? '</b>' : ''}${ball(g.away.team)}</span>
+          <span>${lead === 'home' ? '<b>' : ''}${esc(g.home.team)} ${g.state !== 'pre' ? g.home.score : ''}${lead === 'home' ? '</b>' : ''}${ball(g.home.team)}</span></div>
+          <div class="status">${status}${g.broadcast && g.state !== 'post' ? ` <span class="muted">· ${esc(g.broadcast)}</span>` : ''}</div>
+        </div>`;
+      })
+      .join('');
+  }
+
+  function rosterProgress(team) {
+    const st = (team && team.roster || []).filter((p) => p.starter);
+    const c = { in: 0, pre: 0, post: 0 };
+    for (const p of st) c[p.game && p.game.state in c ? p.game.state : 'post']++;
+    return c;
+  }
+
+  function renderCards() {
+    const leagues = state.leagues || [];
+    const wrap = $('#cards');
+    if (!leagues.length) {
+      wrap.innerHTML = '<div class="muted">No leagues loaded.</div>';
+      $('#matchup-summary').textContent = '';
+      return;
+    }
+    let wins = 0;
+    let losses = 0;
+    wrap.innerHTML = leagues
+      .map((lg) => {
+        if (lg.error) {
+          return `<div class="card error"><div class="card-head"><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span><span class="name">${esc(lg.name)}</span></div><div class="lose">${esc(lg.error)}</div></div>`;
+        }
+        const me = lg.myTeam;
+        const opp = lg.opponent;
+        const lead = opp ? (me.points > opp.points ? 'me' : opp.points > me.points ? 'opp' : '') : '';
+        if (lead === 'me') wins++;
+        if (lead === 'opp') losses++;
+        const prog = rosterProgress(me);
+        const oprog = opp ? rosterProgress(opp) : null;
+        return `<div class="card" data-league="${esc(lg.key)}">
+          <div class="card-head">
+            <span><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span> <span class="name">${esc(lg.name)}</span></span>
+            <span class="meta">${esc(lg.scoring || '')} · Wk ${lg.week}</span>
+          </div>
+          <div class="score">
+            <div class="side">
+              <span class="tname" title="${esc(me.name)}">${esc(me.name)}</span>
+              <span class="rec">${esc(me.record || '')}${me.owner ? ' · you' : ''}</span>
+              <span class="pts ${lead === 'me' ? 'leading' : ''}">${fmtPts(me.points)}</span>
+              <span class="proj">${me.projected != null ? 'proj ' + fmtPts(me.projected) : ''}</span>
+            </div>
+            <div class="vs">vs</div>
+            ${opp ? `<div class="side opp">
+              <span class="tname" title="${esc(opp.name)}">${esc(opp.name)}</span>
+              <span class="rec">${esc(opp.record || '')}${opp.owner ? ' · ' + esc(opp.owner) : ''}</span>
+              <span class="pts ${lead === 'opp' ? 'leading' : ''}">${fmtPts(opp.points)}</span>
+              <span class="proj">${opp.projected != null ? 'proj ' + fmtPts(opp.projected) : ''}</span>
+            </div>` : '<div class="side opp"><span class="muted">No matchup this week</span></div>'}
+          </div>
+          <div class="card-foot">
+            <span>
+              ${prog.in ? `<span class="pill live">● ${prog.in} live</span> ` : ''}
+              <span class="pill pre">${prog.pre} to play</span>
+              <span class="pill post">${prog.post} done</span>
+            </span>
+            ${oprog ? `<span class="muted">opp: ${oprog.in} live · ${oprog.pre} left</span>` : ''}
+          </div>
+        </div>`;
+      })
+      .join('');
+    $('#matchup-summary').textContent = leagues.length ? `${leagues.length} leagues · leading ${wins}, trailing ${losses}` : '';
+    $$('.card[data-league]').forEach((c) => (c.onclick = () => openDrawer(c.dataset.league)));
+  }
+
+  function chip(e, against) {
+    const cls = ['chip', e.starter ? '' : 'bench', against ? 'against' : ''].filter(Boolean).join(' ');
+    const title = `${PLATFORM_NAME[e.platform]} · ${e.leagueName}${against ? ' (opponent\'s player)' : ''}${e.projected != null ? ` · proj ${fmtPts(e.projected)}` : ''}`;
+    return `<span class="${cls}" title="${esc(title)}"><span class="dot ${e.platform}"></span>${esc(e.leagueName)} <span class="slot">${esc(e.slot)}</span> <span class="cpts">${fmtPts(e.points)}</span></span>`;
+  }
+
+  function renderPlayers() {
+    const tbody = $('#players tbody');
+    const q = filters.q.trim().toLowerCase();
+    const rows = (state.players || []).filter((p) => {
+      if (!filters.showAgainst && !p.mine.length) return false;
+      const entries = filters.showAgainst ? [...p.mine, ...p.against] : p.mine;
+      if (filters.startersOnly && !entries.some((e) => e.starter)) return false;
+      const st = p.game ? p.game.state : 'none';
+      if (filters.state !== 'all' && st !== filters.state) return false;
+      if (q) {
+        const hay = `${p.name} ${p.team} ${p.pos} ${entries.map((e) => e.leagueName).join(' ')}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    $('#players-empty').hidden = rows.length > 0;
+    tbody.innerHTML = rows
+      .map((p) => {
+        const mine = filters.startersOnly ? p.mine.filter((e) => e.starter) : p.mine;
+        const against = filters.showAgainst ? (filters.startersOnly ? p.against.filter((e) => e.starter) : p.against) : [];
+        return `<tr class="${p.game ? p.game.state : ''}">
+          <td><span class="pname">${esc(p.name)}</span>${p.injury ? `<span class="inj">${esc(p.injury)}</span>` : ''}<div class="pmeta">${esc(p.pos)} · ${esc(p.team || 'FA')}</div></td>
+          <td>${gameLabel(p.game)}</td>
+          <td><div class="statline">${esc(p.statLine || (p.game && p.game.state === 'pre' ? '' : '—'))}</div></td>
+          <td><div class="chips">${mine.map((e) => chip(e, false)).join('')}${against.map((e) => chip(e, true)).join('')}</div></td>
+        </tr>`;
+      })
+      .join('');
+  }
+
+  // ---------- drawer ----------
+  function openDrawer(key) {
+    openLeague = key;
+    $('#drawer').hidden = false;
+    $('#drawer-backdrop').hidden = false;
+    renderDrawer(key);
+  }
+  function closeDrawer() {
+    openLeague = null;
+    $('#drawer').hidden = true;
+    $('#drawer-backdrop').hidden = true;
+  }
+  function rosterTable(team, other) {
+    if (!team) return '<div class="muted">No opponent this week.</div>';
+    const starters = team.roster.filter((p) => p.starter);
+    const bench = team.roster.filter((p) => !p.starter);
+    const row = (p) => `<tr class="${p.starter ? '' : 'bench'}">
+      <td class="slot">${esc(p.slot)}</td>
+      <td><div>${esc(p.name)}${p.injury ? `<span class="inj">${esc(p.injury)}</span>` : ''} <span class="pmeta">${esc(p.pos)} ${esc(p.team)}</span></div>
+        <div class="sub">${gameLabel(p.game)}</div>${p.statLine ? `<div class="sub muted">${esc(p.statLine)}</div>` : ''}</td>
+      <td class="pts">${fmtPts(p.points)}${p.projected != null ? `<div class="sub muted">${fmtPts(p.projected)}</div>` : ''}</td>
+    </tr>`;
+    const lead = other && team.points > other.points;
+    return `<div class="roster">
+      <h3><span>${esc(team.name)} <span class="pmeta">${esc(team.record || '')}</span></span><span class="mono ${lead ? 'win' : ''}">${fmtPts(team.points)}</span></h3>
+      <table><tbody>${starters.map(row).join('')}${bench.length ? `<tr class="sep"><td colspan="3">Bench</td></tr>${bench.map(row).join('')}` : ''}</tbody></table>
+    </div>`;
+  }
+  function renderDrawer(key) {
+    const lg = (state.leagues || []).find((l) => l.key === key);
+    if (!lg) return closeDrawer();
+    $('#drawer-title').innerHTML = `<h2><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span> ${esc(lg.name)}</h2><div class="pmeta">${esc(lg.scoring || '')} · ${lg.teamCount || '?'} teams · Week ${lg.week} · <a href="${esc(lg.url)}" target="_blank" rel="noopener">open on ${esc(PLATFORM_NAME[lg.platform])}</a></div>`;
+    const sb = (lg.scoreboard || []).length
+      ? `<div class="scoreboard"><h3>League scoreboard</h3><table><tbody>${lg.scoreboard
+          .map((m) => `<tr class="${m.teams.some((t) => t.isMe) ? 'me' : ''}">${m.teams.map((t, i) => `${i ? '<td class="muted">vs</td>' : ''}<td>${esc(t.name)}${t.isMe ? ' <span class="pmeta">(you)</span>' : ''}</td><td class="pts">${fmtPts(t.points)}</td>`).join('')}</tr>`)
+          .join('')}</tbody></table></div>`
+      : '';
+    $('#drawer-body').innerHTML = `<div class="roster-grid">${rosterTable(lg.myTeam, lg.opponent)}${rosterTable(lg.opponent, lg.myTeam)}</div>${sb}`;
+  }
+
+  // ---------- settings ----------
+  const FIELDS = {
+    sleeper: [{ k: 'username', label: 'Sleeper username' }],
+    espn: [
+      { k: 'label', label: 'Label (optional)' },
+      { k: 'swid', label: 'SWID cookie (with braces)' },
+      { k: 'espn_s2', label: 'espn_s2 cookie', secret: true },
+      { k: 'leagueIds', label: 'League IDs (optional, comma separated)' },
+    ],
+    yahoo: [
+      { k: 'label', label: 'Label (optional)' },
+      { k: 'clientId', label: 'Client ID' },
+      { k: 'clientSecret', label: 'Client Secret', secret: true },
+    ],
+  };
+  let draft = null;
+
+  async function openSettings() {
+    config = await (await fetch('/api/config')).json();
+    draft = JSON.parse(JSON.stringify(config));
+    $('#refresh-live').value = draft.refresh.live;
+    $('#refresh-idle').value = draft.refresh.idle;
+    $('#settings-status').textContent = '';
+    renderAccounts();
+    $('#settings').hidden = false;
+  }
+  function closeSettings() {
+    $('#settings').hidden = true;
+  }
+  function renderAccounts() {
+    const el = $('#accounts');
+    if (!draft.accounts.length) {
+      el.innerHTML = '<p class="muted">No accounts yet. Add one below.</p>';
+      return;
+    }
+    el.innerHTML = draft.accounts
+      .map((a, i) => {
+        const fields = FIELDS[a.platform] || [];
+        const inputs = fields
+          .map((f) => {
+            const v = Array.isArray(a[f.k]) ? a[f.k].join(', ') : a[f.k] || '';
+            return `<label>${esc(f.label)}<input type="${f.secret ? 'password' : 'text'}" data-i="${i}" data-k="${f.k}" value="${esc(v)}" autocomplete="off" /></label>`;
+          })
+          .join('');
+        let extra = '';
+        if (a.platform === 'yahoo') {
+          extra = `<div class="yahoo-connect">
+            <span class="${a.connected ? 'status-ok' : 'status-bad'}">${a.connected ? '● Connected' : '○ Not connected'}</span>
+            <button class="btn small" data-yauth="${i}">Connect Yahoo</button>
+            <input type="text" placeholder="paste code from Yahoo" data-ycode="${i}" style="min-width:200px" />
+            <button class="btn small" data-ysubmit="${i}">Submit code</button>
+            ${a.connected ? `<button class="btn small danger" data-ydisc="${i}">Disconnect</button>` : ''}
+          </div><p class="muted" style="margin:6px 0 0;font-size:12px">Save first if you just entered the Client ID/Secret. Set the app's redirect to "Installed Application" (out-of-band).</p>`;
+        }
+        return `<div class="acct">
+          <div class="acct-head"><span class="badge ${a.platform}">${esc(PLATFORM_NAME[a.platform] || a.platform)}</span><button class="btn small danger" data-remove="${i}">Remove</button></div>
+          <div class="grid2">${inputs}</div>${extra}
+        </div>`;
+      })
+      .join('');
+    $$('#accounts input[data-k]').forEach((inp) => (inp.oninput = () => (draft.accounts[+inp.dataset.i][inp.dataset.k] = inp.value)));
+    $$('#accounts [data-remove]').forEach((b) => (b.onclick = () => { draft.accounts.splice(+b.dataset.remove, 1); renderAccounts(); }));
+    $$('#accounts [data-yauth]').forEach((b) => (b.onclick = async () => {
+      const r = await (await fetch(`/api/yahoo/auth-url?index=${b.dataset.yauth}`)).json();
+      if (r.error) return setStatus(r.error, true);
+      window.open(r.url, '_blank');
+    }));
+    $$('#accounts [data-ysubmit]').forEach((b) => (b.onclick = async () => {
+      const code = $(`#accounts [data-ycode="${b.dataset.ysubmit}"]`).value;
+      const r = await (await fetch('/api/yahoo/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: +b.dataset.ysubmit, code }) })).json();
+      if (r.error) return setStatus(r.error, true);
+      setStatus('Yahoo connected.');
+      draft.accounts[+b.dataset.ysubmit].connected = true;
+      renderAccounts();
+    }));
+    $$('#accounts [data-ydisc]').forEach((b) => (b.onclick = async () => {
+      await fetch('/api/yahoo/disconnect', { method: 'POST' });
+      draft.accounts[+b.dataset.ydisc].connected = false;
+      renderAccounts();
+    }));
+  }
+  function setStatus(msg, bad) {
+    const s = $('#settings-status');
+    s.textContent = msg;
+    s.className = bad ? 'status-bad' : 'status-ok';
+  }
+  async function saveSettings() {
+    draft.refresh = { live: +$('#refresh-live').value, idle: +$('#refresh-idle').value };
+    draft.accounts.forEach((a, i) => { if (!a.id) a.id = `${a.platform}-${Date.now()}-${i}`; });
+    const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
+    if (!r.ok) return setStatus('Save failed: ' + (await r.text()), true);
+    config = await r.json();
+    setStatus('Saved. Refreshing leagues…');
+    setTimeout(closeSettings, 600);
+    setTimeout(load, 1500);
+  }
+
+  // ---------- data loop ----------
+  async function load() {
+    try {
+      const r = await fetch('/api/state');
+      state = await r.json();
+      if (!config) config = await (await fetch('/api/config')).json();
+      render();
+    } catch (e) {
+      $('#updated').textContent = 'server unreachable';
+    }
+  }
+
+  // ---------- wire up ----------
+  $('#btn-refresh').onclick = async () => { await fetch('/api/refresh', { method: 'POST' }); $('#updated').textContent = 'refreshing…'; setTimeout(load, 2500); };
+  $('#btn-settings').onclick = openSettings;
+  $('#settings-close').onclick = closeSettings;
+  $('#settings-save').onclick = saveSettings;
+  $$('[data-add]').forEach((b) => (b.onclick = () => { draft.accounts.push({ platform: b.dataset.add }); renderAccounts(); }));
+  $('#drawer-close').onclick = closeDrawer;
+  $('#drawer-backdrop').onclick = closeDrawer;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeSettings(); } });
+  $$('#state-filter button').forEach((b) => (b.onclick = () => { $$('#state-filter button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); filters.state = b.dataset.state; renderPlayers(); }));
+  $('#starters-only').onchange = (e) => { filters.startersOnly = e.target.checked; renderPlayers(); };
+  $('#show-against').onchange = (e) => { filters.showAgainst = e.target.checked; renderPlayers(); };
+  $('#search').oninput = (e) => { filters.q = e.target.value; renderPlayers(); };
+
+  load();
+  setInterval(load, 15000);
+  setInterval(() => { if (state) $('#updated').textContent = state.refreshing ? 'refreshing…' : `updated ${ago(state.updatedAt)}`; }, 5000);
+})();

@@ -1,0 +1,9 @@
+{
+  "port": 3000,
+  "refresh": { "live": 30, "idle": 300 },
+  "accounts": [
+    { "platform": "sleeper", "username": "your_sleeper_username" },
+    { "platform": "espn", "label": "ESPN", "swid": "{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}", "espn_s2": "paste-espn_s2-cookie", "leagueIds": [] },
+    { "platform": "yahoo", "label": "Yahoo", "clientId": "your-yahoo-client-id", "clientSecret": "your-yahoo-client-secret" }
+  ]
+}

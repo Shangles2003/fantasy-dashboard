@@ -1,0 +1,15 @@
+{
+  "name": "fantasy-hq",
+  "version": "0.1.0",
+  "description": "One dashboard for all your fantasy football leagues (Sleeper, ESPN, Yahoo) with live scores and stats.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check adapters/sleeper.js && node --check adapters/espn.js && node --check adapters/yahoo.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
