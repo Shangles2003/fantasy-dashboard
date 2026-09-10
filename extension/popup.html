@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { width: 300px; margin: 0; padding: 14px; background: #0f1216; color: #e8ebef; font: 13px system-ui, sans-serif; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    p { margin: 6px 0; color: #a7afbb; }
+    label { display: block; margin: 8px 0 4px; color: #a7afbb; font-size: 12px; }
+    input { width: 100%; box-sizing: border-box; background: #1f242c; color: #e8ebef; border: 1px solid #2a3039; border-radius: 6px; padding: 7px; font: inherit; }
+    button { width: 100%; margin-top: 10px; background: #5b9cf6; color: #0b1220; border: 0; border-radius: 6px; padding: 9px; font: inherit; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .ok { color: #3ddc84; } .bad { color: #f16a6a; }
+  </style>
+</head>
+<body>
+  <h1>🏈 Fantasy HQ</h1>
+  <p id="status">Checking your ESPN login…</p>
+  <label for="dash">Your dashboard address</label>
+  <input id="dash" placeholder="https://myleagues.duckdns.org" />
+  <button id="go" disabled>Connect ESPN to Fantasy HQ</button>
+  <p style="font-size:11px">Nothing is sent anywhere except to the dashboard address above, which you control.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

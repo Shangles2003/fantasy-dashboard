@@ -354,9 +354,10 @@
     sleeper: [{ k: 'username', label: 'Sleeper username' }],
     espn: [
       { k: 'label', label: 'Label (optional)' },
-      { k: 'swid', label: 'SWID cookie (with braces)' },
-      { k: 'espn_s2', label: 'espn_s2 cookie', secret: true },
-      { k: 'leagueIds', label: 'League IDs (optional, comma separated)' },
+      { k: 'swid', label: 'SWID cookie (with braces) - leave blank for public leagues' },
+      { k: 'espn_s2', label: 'espn_s2 cookie - leave blank for public leagues', secret: true },
+      { k: 'leagueIds', label: 'League IDs (comma separated; required without cookies)' },
+      { k: 'teamName', label: 'Your team name (public leagues, or if your login does not own the team)' },
     ],
     yahoo: [
       { k: 'label', label: 'Label (optional)' },
@@ -525,7 +526,28 @@
   $('#search').oninput = (e) => { filters.q = e.target.value; renderPlayers(); };
   $$('#view-switch button').forEach((b) => (b.onclick = () => { view = b.dataset.view; try { localStorage.setItem('fhq-view', view); } catch { /* ignore */ } if (state) renderView(); }));
 
-  load();
+  // Arriving from the "Fantasy HQ ESPN Connect" browser extension: /?espn#swid=...&espn_s2=...
+  // The values live in the URL fragment (never sent to the server); pre-fill a new ESPN account.
+  async function handleExtensionHandoff() {
+    if (!location.hash.includes('espn_s2=')) return;
+    const frag = new URLSearchParams(location.hash.slice(1));
+    const swid = frag.get('swid');
+    const s2 = frag.get('espn_s2');
+    history.replaceState(null, '', '/');
+    if (!swid || !s2) return;
+    await openSettings();
+    const existing = draft.accounts.find((a) => a.platform === 'espn');
+    if (existing) {
+      existing.swid = swid;
+      existing.espn_s2 = s2;
+    } else {
+      draft.accounts.push({ platform: 'espn', swid, espn_s2: s2 });
+    }
+    renderAccounts();
+    setStatus('ESPN cookies filled in from the extension. Click Save & refresh.');
+  }
+
+  load().then(handleExtensionHandoff);
   setInterval(load, 15000);
   setInterval(() => { if (state) $('#updated').textContent = state.refreshing ? 'refreshing…' : `updated ${ago(state.updatedAt)}`; }, 5000);
 })();

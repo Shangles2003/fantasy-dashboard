@@ -47,17 +47,23 @@ function normalizeS2(raw) {
   }
 }
 
+// Two ways in: cookies (any league you are in) or no cookies at all (leagues the commissioner made public).
 function cookieHeader(account) {
   let swid = String(account.swid || '').trim().replace(/^SWID=/i, '').replace(/^["']|["']$/g, '');
   if (swid && !swid.startsWith('{')) swid = `{${swid}}`;
   swid = swid.toUpperCase();
-  return { swid, headers: { Cookie: `espn_s2=${normalizeS2(account.espn_s2)}; SWID=${swid}`, Accept: 'application/json' } };
+  const s2 = normalizeS2(account.espn_s2);
+  const authed = !!(swid && s2);
+  const headers = { Accept: 'application/json' };
+  if (authed) headers.Cookie = `espn_s2=${s2}; SWID=${swid}`;
+  return { swid, authed, headers };
 }
 
 // Discover the leagues this SWID belongs to via ESPN's fan API. Falls back to account.leagueIds.
 async function discoverLeagues(account, season, hdr) {
   const explicit = (account.leagueIds || []).map((x) => String(x).trim()).filter(Boolean);
   if (explicit.length) return explicit;
+  if (!hdr.authed) throw new Error('Enter your ESPN league ID(s) (from the league URL), or connect with the ESPN cookies.');
   const swid = hdr.swid;
   // ESPN moved its "fan" profile API from fan.espn.com to fan.api.espn.com; try both.
   let data = null;
@@ -119,11 +125,13 @@ async function fetchLeagues(account, ctx) {
   const results = [];
   for (const id of ids) {
     try {
-      results.push(await fetchLeague(id, season, hdr, ctx));
+      results.push(await fetchLeague(id, season, hdr, ctx, account));
     } catch (e) {
       let msg = e.message;
       if (e.status === 401 || /not authorized/i.test(msg)) {
-        msg = 'ESPN says this login is not authorized for the league. Usually the espn_s2 cookie was copied incompletely or from a different ESPN login. Re-copy SWID and the full espn_s2 value (it is ~300 characters) from fantasy.espn.com and save again.';
+        msg = hdr.authed
+          ? 'ESPN says this login is not authorized for the league. Usually the espn_s2 cookie was copied incompletely or from a different ESPN login. Re-copy SWID and the full espn_s2 value (it is ~300 characters) from fantasy.espn.com and save again.'
+          : 'This ESPN league is private. Ask the commissioner to turn on "Make League Viewable to Public" (League Settings -> Basic Settings), or connect with the ESPN cookies instead.';
       }
       results.push({ key: `espn:${id}`, platform: 'espn', leagueId: id, name: `ESPN league ${id}`, error: msg });
     }
@@ -131,7 +139,7 @@ async function fetchLeagues(account, ctx) {
   return results;
 }
 
-async function fetchLeague(leagueId, season, hdr, ctx) {
+async function fetchLeague(leagueId, season, hdr, ctx, account = {}) {
   const base = `${LM}/${season}/segments/0/leagues/${leagueId}`;
   // First call to learn the current scoring period, then fetch with the roster for that period
   const meta = await fetchJson(`${base}?view=mSettings`, { headers: hdr.headers });
@@ -142,11 +150,20 @@ async function fetchLeague(leagueId, season, hdr, ctx) {
   );
   const teams = data.teams || [];
   const members = Object.fromEntries((data.members || []).map((m) => [String(m.id).toUpperCase(), m]));
-  const mySwid = hdr.swid.toUpperCase();
-  const myTeamRaw = teams.find((t) => (t.owners || []).some((o) => String(o).toUpperCase() === mySwid));
-  if (!myTeamRaw) throw new Error('Your SWID is not an owner of any team in this league');
-
   const teamName = (t) => t.name || `${t.location || ''} ${t.nickname || ''}`.trim() || `Team ${t.id}`;
+  const mySwid = hdr.swid.toUpperCase();
+  let myTeamRaw = mySwid ? teams.find((t) => (t.owners || []).some((o) => String(o).toUpperCase() === mySwid)) : null;
+  if (!myTeamRaw && account.teamName) {
+    // Public-league mode: the person tells us which team is theirs
+    const want = String(account.teamName).trim().toLowerCase();
+    myTeamRaw = teams.find((t) => teamName(t).toLowerCase() === want) || teams.find((t) => teamName(t).toLowerCase().includes(want)) || teams.find((t) => String(t.abbrev || '').toLowerCase() === want);
+  }
+  if (!myTeamRaw) {
+    const names = teams.map(teamName).join(', ');
+    throw new Error(hdr.authed && !account.teamName
+      ? `Your ESPN login does not own a team in this league. If you are in it under another name, set "Your team name" in Settings. Teams: ${names}`
+      : `Set "Your team name" in Settings to one of: ${names}`);
+  }
   const ownerName = (t) => {
     const m = members[String((t.owners || [])[0] || '').toUpperCase()];
     return m ? m.displayName || `${m.firstName || ''} ${m.lastName || ''}`.trim() : '';

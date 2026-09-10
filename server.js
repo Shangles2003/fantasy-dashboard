@@ -98,7 +98,7 @@ function maskedAccounts(user) {
 // Only keep known fields, as trimmed strings, so nothing odd can be stored or rendered
 const ACCOUNT_FIELDS = {
   sleeper: ['username'],
-  espn: ['label', 'swid', 'espn_s2', 'leagueIds', 'season'],
+  espn: ['label', 'swid', 'espn_s2', 'leagueIds', 'teamName', 'season'],
   yahoo: ['label', 'clientId', 'clientSecret'],
   cbs: ['label', 'leagueName', 'accessToken'],
 };
@@ -367,7 +367,7 @@ h1{margin:0;font-size:18px}p{margin:0;color:#a7afbb;font-size:13px}input{backgro
 button{background:#5b9cf6;color:#0b1220;border:0;border-radius:8px;padding:10px;font:inherit;font-weight:600;cursor:pointer}.err{color:#f16a6a;font-size:13px}a{color:#5b9cf6;text-decoration:none;font-size:13px}`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const shell = (body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fantasy HQ</title>
-<link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg" type="image/svg+xml"><meta name="theme-color" content="#0f1216"><style>${PAGE_CSS}</style></head><body>${body}</body></html>`;
+<link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg" type="image/svg+xml"><meta name="theme-color" content="#0f1216"><style>${PAGE_CSS}</style></head><body>${body}<script src="/login.js"></script></body></html>`;
 
 const loginPage = (err, name = '') =>
   shell(`<form method="post" action="/login"><h1>🏈 Fantasy HQ</h1>${err ? `<div class="err">${esc(err)}</div>` : ''}
@@ -397,7 +397,7 @@ function currentUser(req) {
 
 // ---------- http ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
-const PUBLIC_PATHS = new Set(['/manifest.json', '/icon.svg', '/healthz']);
+const PUBLIC_PATHS = new Set(['/manifest.json', '/icon.svg', '/healthz', '/login.js']);
 
 function send(req, res, status, body, type = 'application/json', extra = {}) {
   const data = type.startsWith('application/json') ? JSON.stringify(body) : body;

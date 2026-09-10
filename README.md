@@ -34,7 +34,7 @@ Upgrading a single-user install: your existing accounts are moved to the first u
 | Platform | What you need | Notes |
 |---|---|---|
 | Sleeper | Your username | Public API, no login. All your leagues are found automatically. |
-| ESPN | `espn_s2` and `SWID` cookies | Log in at fantasy.espn.com, DevTools → Application → Cookies. Leagues are discovered from your account; if that fails, paste league IDs. |
+| ESPN | One of: nothing (public league), the browser extension, or the `espn_s2` + `SWID` cookies | **Public league**: if the commissioner enabled *Make League Viewable to Public*, enter the league ID and your team name, no login needed. **Extension**: install `extension/` (see its README) and click once while logged in to ESPN. **Manual**: copy the two cookies from DevTools → Application → Cookies on fantasy.espn.com. ESPN's own login API now requires a bot-check challenge, so username/password sign-in is not possible. |
 | Yahoo | A Yahoo developer app (Client ID + Secret) | Create one at <https://developer.yahoo.com/apps/create/> as an *Installed Application* with Fantasy Sports read permission. Save it in Settings, click **Connect Yahoo**, approve, paste the code back. |
 | CBS | League subdomain + per-league access token | CBS's legacy v3 API still works. Log in, open your league page, and copy the token from the page source (`var token = "…"`) or from any `api.cbssports.com` request's `access_token` in DevTools → Network. One entry per league. |
 

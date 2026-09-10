@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Fantasy HQ ESPN Connect",
+  "version": "1.0.0",
+  "description": "One click to connect your ESPN fantasy account to your Fantasy HQ dashboard.",
+  "permissions": ["cookies", "storage"],
+  "host_permissions": ["https://*.espn.com/"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Connect ESPN to Fantasy HQ"
+  },
+  "icons": { "128": "icon.png" }
+}

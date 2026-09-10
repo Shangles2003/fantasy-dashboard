@@ -111,7 +111,12 @@
           <h4>Sleeper</h4>
           <p>Just your Sleeper username. No login needed.</p>
           <h4>ESPN</h4>
-          <p>Log in to fantasy.espn.com in your browser, open DevTools → Application → Cookies → <code>https://fantasy.espn.com</code>, and copy the values of <code>espn_s2</code> and <code>SWID</code>. Leagues are discovered automatically; if that fails, paste league IDs (from the league URL) separated by commas.</p>
+          <p>Three ways, easiest first:</p>
+          <ul>
+            <li><b>Public league (no login):</b> if your commissioner turned on <i>Make League Viewable to Public</i> (League Settings → Basic Settings), just enter the league ID from the league URL (<code>leagueId=…</code>) and your team name. Leave the cookie fields blank.</li>
+            <li><b>Browser extension (one click):</b> install the "Fantasy HQ ESPN Connect" extension from the project's <code>extension</code> folder (see README), open fantasy.espn.com while logged in, click the extension, and it opens this dashboard with the cookies filled in.</li>
+            <li><b>Manual cookies:</b> on fantasy.espn.com, DevTools → Application → Cookies → <code>https://fantasy.espn.com</code>; copy the full values of <code>espn_s2</code> (about 300 characters) and <code>SWID</code>. Leagues are then found automatically.</li>
+          </ul>
           <h4>Yahoo</h4>
           <p>Create an app at <a href="https://developer.yahoo.com/apps/create/" target="_blank" rel="noopener">developer.yahoo.com/apps</a> (Installed Application, API permission "Fantasy Sports – Read"). Paste the Client ID and Client Secret, save, then click <b>Connect Yahoo</b>, approve, and paste the code Yahoo shows you.</p>
           <h4>CBS</h4>
