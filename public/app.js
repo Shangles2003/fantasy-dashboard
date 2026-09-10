@@ -159,7 +159,7 @@
     wrap.innerHTML = leagues
       .map((lg) => {
         if (lg.error) {
-          return `<div class="card error"><div class="card-head"><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span><span class="name">${esc(lg.name)}</span></div><div class="lose">${esc(lg.error)}</div></div>`;
+          return `<div class="card error"><button class="btn hide" data-hide="${esc(lg.key)}" title="Hide this league from the dashboard">hide</button><div class="card-head"><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span><span class="name">${esc(lg.name)}</span></div><div class="lose">${esc(lg.error)}</div></div>`;
         }
         const me = lg.myTeam;
         const opp = lg.opponent;

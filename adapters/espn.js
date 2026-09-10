@@ -36,10 +36,22 @@ function mapStats(raw) {
   return Object.keys(out).length ? out : null;
 }
 
+// Normalize a pasted espn_s2: people copy it URL-encoded (%2F...) or decoded (/, +, =), sometimes with
+// quotes or an "espn_s2=" prefix. ESPN wants the encoded form.
+function normalizeS2(raw) {
+  let v = String(raw || '').trim().replace(/^espn_s2=/i, '').replace(/^["']|["']$/g, '').replace(/;.*$/, '').trim();
+  try {
+    return encodeURIComponent(decodeURIComponent(v));
+  } catch {
+    return encodeURIComponent(v);
+  }
+}
+
 function cookieHeader(account) {
-  let swid = String(account.swid || '').trim();
+  let swid = String(account.swid || '').trim().replace(/^SWID=/i, '').replace(/^["']|["']$/g, '');
   if (swid && !swid.startsWith('{')) swid = `{${swid}}`;
-  return { swid, headers: { Cookie: `espn_s2=${account.espn_s2}; SWID=${swid}`, Accept: 'application/json' } };
+  swid = swid.toUpperCase();
+  return { swid, headers: { Cookie: `espn_s2=${normalizeS2(account.espn_s2)}; SWID=${swid}`, Accept: 'application/json' } };
 }
 
 // Discover the leagues this SWID belongs to via ESPN's fan API. Falls back to account.leagueIds.
@@ -109,7 +121,11 @@ async function fetchLeagues(account, ctx) {
     try {
       results.push(await fetchLeague(id, season, hdr, ctx));
     } catch (e) {
-      results.push({ key: `espn:${id}`, platform: 'espn', leagueId: id, name: `ESPN league ${id}`, error: e.message });
+      let msg = e.message;
+      if (e.status === 401 || /not authorized/i.test(msg)) {
+        msg = 'ESPN says this login is not authorized for the league. Usually the espn_s2 cookie was copied incompletely or from a different ESPN login. Re-copy SWID and the full espn_s2 value (it is ~300 characters) from fantasy.espn.com and save again.';
+      }
+      results.push({ key: `espn:${id}`, platform: 'espn', leagueId: id, name: `ESPN league ${id}`, error: msg });
     }
   }
   return results;
