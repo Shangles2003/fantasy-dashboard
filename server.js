@@ -4,7 +4,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { nameKey } = require('./lib/util');
+const { DATA_DIR } = require('./lib/cache');
 
 // Adapters and lib modules are re-required on every refresh so fixes to them take effect
 // without restarting the server. (Changes to server.js itself still need a restart.)
@@ -20,8 +22,12 @@ function loadAdapters() {
 let ADAPTERS = loadAdapters();
 const SECRET_FIELDS = ['espn_s2', 'clientSecret', 'accessToken'];
 const MASK = '********';
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+// Hosted: config lives on the persistent data disk. Local: config.json next to server.js.
+const CONFIG_PATH = process.env.FHQ_DATA_DIR ? path.join(DATA_DIR, 'config.json') : path.join(__dirname, 'config.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// Set FHQ_PASSWORD to require a login (do this whenever the dashboard is reachable from the internet).
+const PASSWORD = process.env.FHQ_PASSWORD || '';
+const COOKIE = 'fhq';
 
 // ---------- config ----------
 const DEFAULT_CONFIG = { port: 3000, refresh: { live: 30, idle: 300 }, accounts: [] };
@@ -35,6 +41,7 @@ function loadConfig() {
   }
 }
 function saveConfig(c) {
+  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(c, null, 2));
 }
 let config = loadConfig();
@@ -186,6 +193,28 @@ function aggregatePlayers(leagues) {
   });
 }
 
+// ---------- auth ----------
+function sessionToken() {
+  return crypto.createHmac('sha256', PASSWORD).update('fhq-session-v1').digest('hex');
+}
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+function isAuthed(req) {
+  if (!PASSWORD) return true;
+  const m = /(?:^|;\s*)fhq=([a-f0-9]+)/.exec(req.headers.cookie || '');
+  return !!(m && safeEqual(m[1], sessionToken()));
+}
+const LOGIN_PAGE = (err) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fantasy HQ</title>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0f1216">
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1216;color:#e8ebef;font-family:system-ui,sans-serif}
+form{background:#171b21;border:1px solid #2a3039;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px}
+h1{margin:0;font-size:18px}input{background:#1f242c;color:#e8ebef;border:1px solid #2a3039;border-radius:8px;padding:10px;font:inherit}
+button{background:#5b9cf6;color:#0b1220;border:0;border-radius:8px;padding:10px;font:inherit;font-weight:600}.err{color:#f16a6a;font-size:13px}</style></head>
+<body><form method="post" action="/login"><h1>🏈 Fantasy HQ</h1>${err ? '<div class="err">Wrong password</div>' : ''}<input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password"><button>Sign in</button></form></body></html>`;
+
 // ---------- http ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
@@ -241,7 +270,28 @@ function applyConfigUpdate(incoming) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
+    if (url.pathname === '/login' && req.method === 'POST') {
+      let buf = '';
+      for await (const c of req) buf += c;
+      const pw = new URLSearchParams(buf).get('password') || '';
+      if (PASSWORD && safeEqual(pw, PASSWORD)) {
+        res.writeHead(302, { 'Set-Cookie': `${COOKIE}=${sessionToken()}; Path=/; Max-Age=${180 * 24 * 3600}; HttpOnly; SameSite=Lax`, Location: '/' });
+        return res.end();
+      }
+      return send(res, 401, LOGIN_PAGE(true), 'text/html; charset=utf-8');
+    }
+    if (url.pathname === '/logout') {
+      res.writeHead(302, { 'Set-Cookie': `${COOKIE}=; Path=/; Max-Age=0`, Location: '/' });
+      return res.end();
+    }
+    if (!isAuthed(req)) {
+      if (url.pathname === '/manifest.json' || url.pathname === '/icon.svg' || url.pathname === '/healthz') {
+        /* public assets so the home-screen icon works */
+      } else if (url.pathname.startsWith('/api/')) return send(res, 401, { error: 'Not signed in' });
+      else return send(res, 200, LOGIN_PAGE(false), 'text/html; charset=utf-8');
+    }
     if (url.pathname === '/api/state') return send(res, 200, state);
+    if (url.pathname === '/healthz') return send(res, 200, { ok: true, updatedAt: state.updatedAt });
     if (url.pathname === '/api/config' && req.method === 'GET') return send(res, 200, publicConfig());
     if (url.pathname === '/api/config' && req.method === 'PUT') {
       applyConfigUpdate(await readBody(req));
@@ -282,8 +332,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, () => {
-  console.log(`Fantasy HQ running at http://localhost:${config.port}`);
+const port = Number(process.env.PORT) || config.port;
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Fantasy HQ running at http://localhost:${port}${PASSWORD ? ' (password protected)' : ''}`);
+  if (!PASSWORD) console.log('No FHQ_PASSWORD set: anyone who can reach this port can see your leagues and settings. Fine at home; set it before hosting.');
   if (!config.accounts.length) console.log('No accounts configured yet. Open the dashboard and click Settings to connect your leagues.');
   refresh('startup').catch((e) => console.error(e));
 });
