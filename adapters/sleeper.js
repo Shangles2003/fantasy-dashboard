@@ -169,7 +169,8 @@ async function fetchLeague(lg, uid, shared, ctx) {
   const scoreboard = Object.values(groups).map((ms) => ({
     teams: ms.map((m) => {
       const r = rosters.find((x) => x.roster_id === m.roster_id) || { roster_id: m.roster_id };
-      return { id: String(m.roster_id), name: teamName(r), points: round1(m.points), isMe: m.roster_id === myRoster.roster_id };
+      const starters = buildRoster(r, m, lg, shared, ctx).filter((p) => p.starter).map((p) => ({ points: p.points, projected: p.projected, game: p.game }));
+      return { id: String(m.roster_id), name: teamName(r), points: round1(m.points), isMe: m.roster_id === myRoster.roster_id, starters };
     }),
   }));
 

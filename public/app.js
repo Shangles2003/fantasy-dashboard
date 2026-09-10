@@ -118,6 +118,27 @@
       .join('');
   }
 
+  const pct = (p) => (p == null ? null : Math.round(p * 100));
+  function winLabel(team) {
+    const w = pct(team && team.winProb);
+    if (w == null) return '';
+    return `<span class="win ${w >= 60 ? 'good' : w <= 40 ? 'bad' : ''}">${w}% win</span>`;
+  }
+  function projLabel(team) {
+    if (!team) return '';
+    const v = team.liveProjected != null ? team.liveProjected : team.projected;
+    return v == null ? '' : `proj ${fmtPts(v)}`;
+  }
+  function winBar(me, opp) {
+    const w = pct(me && me.winProb);
+    if (w == null || !opp) return '';
+    return `<div class="winbar" title="${w}% chance to win"><span style="width:${w}%"></span><span class="opp" style="width:${100 - w}%"></span></div>`;
+  }
+  async function hideLeague(key, hidden) {
+    const r = await fetch('/api/hidden', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ league: key, hidden }) });
+    if (r.ok) await load();
+  }
+
   function rosterProgress(team) {
     const st = (team && team.roster || []).filter((p) => p.starter);
     const c = { in: 0, pre: 0, post: 0 };
@@ -148,6 +169,7 @@
         const prog = rosterProgress(me);
         const oprog = opp ? rosterProgress(opp) : null;
         return `<div class="card" data-league="${esc(lg.key)}">
+          <button class="btn hide" data-hide="${esc(lg.key)}" title="Hide this league from the dashboard">hide</button>
           <div class="card-head">
             <span><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span> <span class="name">${esc(lg.name)}</span></span>
             <span class="meta">${esc(lg.scoring || '')} · Wk ${lg.week}</span>
@@ -157,16 +179,17 @@
               <span class="tname" title="${esc(me.name)}">${esc(me.name)}</span>
               <span class="rec">${esc(me.record || '')}${me.owner ? ' · you' : ''}</span>
               <span class="pts ${lead === 'me' ? 'leading' : ''}">${fmtPts(me.points)}</span>
-              <span class="proj">${me.projected != null ? 'proj ' + fmtPts(me.projected) : ''}</span>
+              <span class="proj">${projLabel(me)} ${winLabel(me)}</span>
             </div>
             <div class="vs">vs</div>
             ${opp ? `<div class="side opp">
               <span class="tname" title="${esc(opp.name)}">${esc(opp.name)}</span>
               <span class="rec">${esc(opp.record || '')}${opp.owner ? ' · ' + esc(opp.owner) : ''}</span>
               <span class="pts ${lead === 'opp' ? 'leading' : ''}">${fmtPts(opp.points)}</span>
-              <span class="proj">${opp.projected != null ? 'proj ' + fmtPts(opp.projected) : ''}</span>
+              <span class="proj">${winLabel(opp)} ${projLabel(opp)}</span>
             </div>` : '<div class="side opp"><span class="muted">No matchup this week</span></div>'}
           </div>
+          ${winBar(me, opp)}
           <div class="card-foot">
             <span>
               ${prog.in ? `<span class="pill live">● ${prog.in} live</span> ` : ''}
@@ -178,8 +201,10 @@
         </div>`;
       })
       .join('');
-    $('#matchup-summary').textContent = leagues.length ? `${leagues.length} leagues · leading ${wins}, trailing ${losses}` : '';
+    const hiddenN = (state.hidden || []).length;
+    $('#matchup-summary').textContent = leagues.length ? `${leagues.length} leagues · leading ${wins}, trailing ${losses}${hiddenN ? ` · ${hiddenN} hidden` : ''}` : hiddenN ? `${hiddenN} hidden` : '';
     $$('.card[data-league]').forEach((c) => (c.onclick = () => openDrawer(c.dataset.league)));
+    $$('.card [data-hide]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); hideLeague(b.dataset.hide, true); }));
   }
 
   function chip(e, against) {
@@ -267,10 +292,11 @@
             <span class="pmeta">${esc(lg.scoring || '')} · Wk ${lg.week} · <a href="#" data-open="${esc(lg.key)}">full rosters</a></span>
           </div>
           <div class="mu-score">
-            <div><div class="tname">${esc(me.name)} <span class="pmeta">${esc(me.record || '')}</span></div><div class="pts ${lead === 'me' ? 'leading' : ''}">${fmtPts(me.points)}</div><div class="proj">${me.projected != null ? 'proj ' + fmtPts(me.projected) : ''}</div></div>
+            <div><div class="tname">${esc(me.name)} <span class="pmeta">${esc(me.record || '')}</span></div><div class="pts ${lead === 'me' ? 'leading' : ''}">${fmtPts(me.points)}</div><div class="proj">${projLabel(me)} ${winLabel(me)}</div></div>
             <div class="muted">vs</div>
-            ${opp ? `<div class="right"><div class="tname">${esc(opp.name)} <span class="pmeta">${esc(opp.record || '')}</span></div><div class="pts ${lead === 'opp' ? 'leading' : ''}">${fmtPts(opp.points)}</div><div class="proj">${opp.projected != null ? 'proj ' + fmtPts(opp.projected) : ''}</div></div>` : '<div class="right muted">No matchup this week</div>'}
+            ${opp ? `<div class="right"><div class="tname">${esc(opp.name)} <span class="pmeta">${esc(opp.record || '')}</span></div><div class="pts ${lead === 'opp' ? 'leading' : ''}">${fmtPts(opp.points)}</div><div class="proj">${winLabel(opp)} ${projLabel(opp)}</div></div>` : '<div class="right muted">No matchup this week</div>'}
           </div>
+          ${winBar(me, opp)}
           ${opp ? `<table><tbody>${rows.join('')}</tbody></table>` : ''}
           <div class="mu-foot">
             <span>${mp.in ? `<span class="pill live">● ${mp.in} live</span> ` : ''}<span class="pill pre">${mp.pre} to play</span> <span class="pill post">${mp.post} done</span></span>
@@ -314,9 +340,10 @@
     const lg = (state.leagues || []).find((l) => l.key === key);
     if (!lg) return closeDrawer();
     $('#drawer-title').innerHTML = `<h2><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span> ${esc(lg.name)}</h2><div class="pmeta">${esc(lg.scoring || '')} · ${lg.teamCount || '?'} teams · Week ${lg.week} · <a href="${esc(lg.url)}" target="_blank" rel="noopener">open on ${esc(PLATFORM_NAME[lg.platform])}</a></div>`;
+    const cell = (t) => `<td>${esc(t.name)}${t.isMe ? ' <span class="pmeta">(you)</span>' : ''}<div class="pmeta">${projLabel(t)}${t.winProb != null ? ` · ${winLabel(t)}` : ''}</div></td><td class="pts">${fmtPts(t.points)}</td>`;
     const sb = (lg.scoreboard || []).length
       ? `<div class="scoreboard"><h3>League scoreboard</h3><table><tbody>${lg.scoreboard
-          .map((m) => `<tr class="${m.teams.some((t) => t.isMe) ? 'me' : ''}">${m.teams.map((t, i) => `${i ? '<td class="muted">vs</td>' : ''}<td>${esc(t.name)}${t.isMe ? ' <span class="pmeta">(you)</span>' : ''}</td><td class="pts">${fmtPts(t.points)}</td>`).join('')}</tr>`)
+          .map((m) => `<tr class="${m.teams.some((t) => t.isMe) ? 'me' : ''}">${m.teams.map((t, i) => `${i ? '<td class="muted">vs</td>' : ''}${cell(t)}`).join('')}</tr>`)
           .join('')}</tbody></table></div>`
       : '';
     $('#drawer-body').innerHTML = `<div class="roster-grid">${rosterTable(lg.myTeam, lg.opponent)}${rosterTable(lg.opponent, lg.myTeam)}</div>${sb}`;
@@ -355,7 +382,20 @@
     $('#pw-next').value = '';
     renderAccounts();
     renderAdmin();
+    renderHidden();
     $('#settings').hidden = false;
+  }
+  function renderHidden() {
+    const list = config.hidden || [];
+    $('#hidden-empty').hidden = list.length > 0;
+    $('#hidden-list').innerHTML = list
+      .map((l) => `<div class="add-row"><span class="badge ${l.platform}">${esc(PLATFORM_NAME[l.platform] || l.platform)}</span> <span>${esc(l.name)}</span> <button class="btn small" data-unhide="${esc(l.key)}">Show again</button></div>`)
+      .join('');
+    $$('#hidden-list [data-unhide]').forEach((b) => (b.onclick = async () => {
+      await hideLeague(b.dataset.unhide, false);
+      config.hidden = (config.hidden || []).filter((l) => l.key !== b.dataset.unhide);
+      renderHidden();
+    }));
   }
   function renderAdmin() {
     const isAdmin = !!(config.user && config.user.admin && config.admin);

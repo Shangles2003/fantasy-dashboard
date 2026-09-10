@@ -88,6 +88,16 @@ main { padding: 16px 20px 60px; max-width: 1400px; margin: 0 auto; display: flex
 .score .pts.leading { color: var(--live); }
 .score .proj { color: var(--muted); font-size: 11px; font-family: var(--mono); }
 .score .vs { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.card .hide { position: absolute; top: 8px; right: 8px; opacity: 0; font-size: 11px; padding: 2px 7px; }
+.card { position: relative; }
+.card:hover .hide { opacity: 0.8; }
+.card .hide:hover { opacity: 1; border-color: var(--bad); color: var(--bad); }
+.winbar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--surface-2); margin: 2px 0; }
+.winbar span { display: block; height: 100%; background: var(--live); opacity: 0.85; }
+.winbar span.opp { background: var(--bad); opacity: 0.6; }
+.win { font-weight: 600; color: var(--text-2); }
+.win.good { color: var(--live); }
+.win.bad { color: var(--bad); }
 .card-foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-2); gap: 8px; flex-wrap: wrap; }
 .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 11px; }
 .pill.live { color: var(--live); border-color: var(--live); }

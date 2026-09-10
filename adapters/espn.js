@@ -172,10 +172,26 @@ async function fetchLeague(leagueId, season, hdr, ctx) {
   const sides = sideFor(myTeamRaw.id);
   const oppRaw = sides.opp ? teams.find((t) => t.id === sides.opp.teamId) : null;
 
+  const sideProjection = (s) => {
+    if (s.totalProjectedPointsLive != null) return round1(s.totalProjectedPointsLive);
+    const entries = (s.rosterForCurrentScoringPeriod && s.rosterForCurrentScoringPeriod.entries) || [];
+    let sum = 0;
+    let any = false;
+    for (const e of entries) {
+      const slot = SLOT[e.lineupSlotId] || 'BN';
+      if (slot === 'BN' || slot === 'IR') continue;
+      const st = (((e.playerPoolEntry || {}).player || {}).stats || []).find((x) => x.scoringPeriodId === week && x.statSourceId === 1 && x.statSplitTypeId === 1);
+      if (st) {
+        any = true;
+        sum += num(st.appliedTotal);
+      }
+    }
+    return any ? round1(sum) : null;
+  };
   const scoreboard = schedule.map((m) => ({
     teams: [m.home, m.away].filter(Boolean).map((s) => {
       const t = teams.find((x) => x.id === s.teamId) || { id: s.teamId };
-      return { id: String(s.teamId), name: teamName(t), points: round1(s.totalPointsLive != null ? s.totalPointsLive : s.totalPoints || 0), isMe: s.teamId === myTeamRaw.id };
+      return { id: String(s.teamId), name: teamName(t), points: round1(s.totalPointsLive != null ? s.totalPointsLive : s.totalPoints || 0), isMe: s.teamId === myTeamRaw.id, projected: sideProjection(s) };
     }),
   }));
 

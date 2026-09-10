@@ -107,6 +107,27 @@ async function waitUp() {
   r = await req('DELETE', `/api/admin/users/${'0'.repeat(16)}`, { cookie: sam });
   check('non-admin cannot delete users', r.status === 403, String(r.status));
 
+  // --- refresh survives repeated runs (regression: a timer refresh once crashed the process)
+  await req('POST', '/api/refresh', { cookie: joe });
+  await new Promise((s) => setTimeout(s, 3000));
+  r = await req('GET', '/healthz');
+  check('server alive after a second refresh', r.status === 200, String(r.status));
+
+  // --- hiding leagues is per user and reversible
+  const firstKey = sJoe.leagues[0].key;
+  r = await req('POST', '/api/hidden', { cookie: joe, body: { league: firstKey, hidden: true } });
+  check('hide league ok', r.status === 200 && r.json.hidden.length === 1 && r.json.leagues.length === sJoe.leagues.length - 1, r.text.slice(0, 120));
+  const sJoe2 = (await req('GET', '/api/state', { cookie: joe })).json;
+  check('hidden league gone from state and players', !sJoe2.leagues.some((l) => l.key === firstKey) && !sJoe2.players.some((p) => p.mine.some((e) => e.league === firstKey)));
+  r = await req('POST', '/api/hidden', { cookie: sam, body: { league: firstKey, hidden: true } });
+  const sSam2 = (await req('GET', '/api/state', { cookie: sam })).json;
+  check("hiding does not leak another user's league names", r.status === 200 && sSam2.hidden.length === 0);
+  r = await req('POST', '/api/hidden', { cookie: joe, body: { league: 'bogus:<script>', hidden: true } });
+  check('bad league key rejected', r.status === 400, String(r.status));
+  r = await req('POST', '/api/hidden', { cookie: joe, body: { league: firstKey, hidden: false } });
+  check('unhide restores league', r.status === 200 && r.json.hidden.length === 0 && r.json.leagues.length === sJoe.leagues.length);
+  check('win probability computed for a matchup', sJoe.leagues.some((l) => l.opponent && typeof l.myTeam.winProb === 'number' && typeof l.myTeam.liveProjected === 'number'));
+
   // --- secrets never come back
   r = await req('PUT', '/api/config', { cookie: sam, body: { accounts: [{ platform: 'cbs', leagueName: 'x', accessToken: 'SUPERSECRET' }] } });
   check('save accounts ok', r.status === 200 && r.json.accounts[0].accessToken === '********', r.text.slice(0, 120));

@@ -133,8 +133,7 @@ async function fetchLeague(account, leagueId, ctx) {
   // Projections come from the rosters resource (optional)
   const projMap = {};
   try {
-    const ids = [myId, oppId].filter(Boolean).join(',');
-    const rosters = await cget('league/rosters', account, { team_id: ids, period: week });
+    const rosters = await cget('league/rosters', account, { team_id: 'all', period: week });
     for (const t of (rosters.rosters && rosters.rosters.teams) || []) {
       for (const p of t.players || []) if (p.projected_points != null) projMap[String(p.id)] = p.projected_points;
     }
@@ -168,9 +167,18 @@ async function fetchLeague(account, leagueId, ctx) {
     const o = oid ? teams.find((x) => String(x.id) === oid) : null;
     seen.add(id);
     if (o) seen.add(oid);
-    const teamTotal = (x) => round1((x.players || []).map((p) => player(p, projMap, ctx, scheduled, base)).filter((p) => p.starter).reduce((sum, p) => sum + p.points, 0));
+    const startersOf = (x) => (x.players || []).map((p) => player(p, projMap, ctx, scheduled, base)).filter((p) => p.starter);
     scoreboard.push({
-      teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: teamTotal(x), isMe: String(x.id) === myId })),
+      teams: [t, o].filter(Boolean).map((x) => {
+        const st = startersOf(x);
+        return {
+          id: String(x.id),
+          name: x.name || x.long_abbr,
+          points: round1(st.reduce((sum, p) => sum + p.points, 0)),
+          isMe: String(x.id) === myId,
+          starters: st.map((p) => ({ points: p.points, projected: p.projected, game: p.game })),
+        };
+      }),
     });
   }
 

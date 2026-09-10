@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { nameKey } = require('./lib/util');
 const { DATA_DIR } = require('./lib/cache');
 const users = require('./lib/users');
+const { enrichLeague } = require('./lib/outlook');
 
 // Adapters and lib modules are re-required on every refresh so fixes to them take effect
 // without restarting the server. (Changes to server.js itself still need a restart.)
@@ -142,6 +143,18 @@ async function refresh(reason = 'timer') {
   if (refreshing) return;
   refreshing = true;
   state.refreshing = true;
+  try {
+    await doRefresh(reason);
+  } catch (e) {
+    console.error(`Refresh failed (${reason}):`, e);
+    state.refreshing = false;
+  } finally {
+    refreshing = false;
+    scheduleNext();
+  }
+}
+
+async function doRefresh(reason) {
   const started = Date.now();
   const warnings = [];
   const ctx = { warn: (m) => warnings.push(m) };
@@ -177,11 +190,10 @@ async function refresh(reason = 'timer') {
           }
         }),
       );
-      const leagues = accountResults.flatMap((r) => r.leagues.map((l) => ({ ...l, accountIndex: r.index })));
+      const leagues = accountResults.flatMap((r) => r.leagues.map((l) => enrichLeague({ ...l, accountIndex: r.index })));
       byUser[u.id] = {
         accounts: accountResults.map(({ leagues: _l, ...r }) => ({ ...r, leagueCount: _l.length })),
-        leagues,
-        players: aggregatePlayers(leagues),
+        allLeagues: leagues,
       };
     }),
   );
@@ -196,9 +208,7 @@ async function refresh(reason = 'timer') {
     warnings,
     byUser,
   };
-  refreshing = false;
-  scheduleNext();
-  const nLeagues = Object.values(byUser).reduce((s, u) => s + u.leagues.length, 0);
+  const nLeagues = Object.values(byUser).reduce((s, u) => s + u.allLeagues.length, 0);
   console.log(`[${new Date().toLocaleTimeString()}] refreshed (${reason}) in ${state.refreshMs}ms: ${users.listUsers().length} users, ${nLeagues} leagues, live=${nfl.anyLive}`);
 }
 
@@ -208,11 +218,24 @@ function scheduleNext() {
   let delay = idle;
   if (state.nfl.anyLive) delay = live;
   else if (state.nfl.nextKickoff && new Date(state.nfl.nextKickoff) - Date.now() < 20 * 60 * 1000) delay = Math.min(idle, 60);
-  refreshTimer = setTimeout(() => refresh('timer'), Math.max(10, delay) * 1000);
+  refreshTimer = setTimeout(() => refresh('timer').catch((e) => console.error(e)), Math.max(10, delay) * 1000);
 }
 
+// Per-user view: hidden leagues removed, players merged from the visible ones only.
+const derivedCache = new Map();
+function visibleFor(user) {
+  const mine = state.byUser[user.id] || { accounts: [], allLeagues: [] };
+  const hiddenSet = new Set(user.hiddenLeagues || []);
+  const cacheKey = `${state.updatedAt}|${[...hiddenSet].sort().join(',')}`;
+  const c = derivedCache.get(user.id);
+  if (c && c.key === cacheKey) return c.value;
+  const leagues = mine.allLeagues.filter((l) => !hiddenSet.has(l.key));
+  const hidden = mine.allLeagues.filter((l) => hiddenSet.has(l.key)).map((l) => ({ key: l.key, name: l.name, platform: l.platform }));
+  const value = { accounts: mine.accounts, leagues, hidden, players: aggregatePlayers(leagues) };
+  derivedCache.set(user.id, { key: cacheKey, value });
+  return value;
+}
 function stateFor(user) {
-  const mine = state.byUser[user.id] || { accounts: [], leagues: [], players: [] };
   return {
     updatedAt: state.updatedAt,
     refreshing: state.refreshing,
@@ -220,7 +243,7 @@ function stateFor(user) {
     nfl: state.nfl,
     warnings: state.warnings,
     user: { name: user.name, admin: !!user.admin },
-    ...mine,
+    ...visibleFor(user),
   };
 }
 
@@ -467,7 +490,7 @@ const server = http.createServer(async (req, res) => {
       return send(req, res, 202, { ok: true });
     }
     if (p === '/api/config' && req.method === 'GET') {
-      const out = { accounts: maskedAccounts(user), refresh: config.refresh, user: { name: user.name, admin: !!user.admin } };
+      const out = { accounts: maskedAccounts(user), refresh: config.refresh, user: { name: user.name, admin: !!user.admin }, hidden: visibleFor(user).hidden };
       if (user.admin) out.admin = { inviteCode: users.inviteCode(), users: users.listUsers().map(users.publicUser) };
       return send(req, res, 200, out);
     }
@@ -490,6 +513,13 @@ const server = http.createServer(async (req, res) => {
       refresh('config').catch((e) => console.error(e));
       return send(req, res, 200, { accounts: maskedAccounts(user), refresh: config.refresh });
     }
+    if (p === '/api/hidden' && req.method === 'POST') {
+      const b = await readBody(req);
+      const key = String(b.league || '');
+      if (!/^(sleeper|espn|yahoo|cbs):[\w.-]{1,100}$/.test(key)) return send(req, res, 400, { error: 'Bad league key' });
+      users.setHidden(user, key, !!b.hidden);
+      return send(req, res, 200, { hiddenLeagues: user.hiddenLeagues, ...visibleFor(user) });
+    }
     if (p === '/api/password' && req.method === 'POST') {
       const b = await readBody(req);
       if (!users.checkPassword(user, b.current)) return send(req, res, 403, { error: 'Current password is wrong' });
@@ -511,6 +541,7 @@ const server = http.createServer(async (req, res) => {
         if (del[1] === user.id) return send(req, res, 400, { error: 'You cannot remove yourself' });
         users.deleteUser(del[1]);
         delete state.byUser[del[1]];
+        derivedCache.delete(del[1]);
         return send(req, res, 200, { ok: true });
       }
       return send(req, res, 404, { error: 'Not found' });
@@ -550,6 +581,10 @@ const server = http.createServer(async (req, res) => {
     return send(req, res, e.message === 'Request too large' ? 413 : 500, { error: e.message === 'Request too large' ? e.message : 'Server error' });
   }
 });
+
+// Never let a stray async error take the whole dashboard down
+process.on('unhandledRejection', (e) => console.error('Unhandled rejection:', e));
+process.on('uncaughtException', (e) => console.error('Uncaught exception:', e));
 
 const port = Number(process.env.PORT) || config.port;
 server.listen(port, '0.0.0.0', () => {

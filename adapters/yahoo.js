@@ -198,7 +198,7 @@ async function fetchLeague(account, leagueKey, myTeamKey, ctx) {
         isMe: t.meta.team_key === myTeamKey,
       };
     });
-    scoreboard.push({ teams: ts.map(({ id, name, points, isMe }) => ({ id, name, points, isMe })) });
+    scoreboard.push({ teams: ts.map(({ id, name, points, isMe, projected }) => ({ id, name, points, isMe, projected })) });
     const mine = ts.find((t) => t.isMe);
     if (mine) {
       myMeta = mine;
