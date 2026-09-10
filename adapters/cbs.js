@@ -112,7 +112,7 @@ async function fetchLeague(account, leagueId, ctx) {
     const roster = (t.players || []).map((p) => player(p, projMap, ctx, scheduled));
     const starters = roster.filter((p) => p.starter);
     const live = round1(starters.reduce((s, p) => s + p.points, 0));
-    const teamPts = scheduled ? live : Math.max(pts(t.pts), live);
+    const teamPts = live; // never trust CBS's team total: it carries stale numbers into a new period
     return {
       id: String(t.id),
       name: t.name || t.long_abbr || `Team ${t.id}`,
@@ -134,8 +134,9 @@ async function fetchLeague(account, leagueId, ctx) {
     const o = oid ? teams.find((x) => String(x.id) === oid) : null;
     seen.add(id);
     if (o) seen.add(oid);
+    const teamTotal = (x) => round1((x.players || []).map((p) => player(p, projMap, ctx, scheduled)).filter((p) => p.starter).reduce((sum, p) => sum + p.points, 0));
     scoreboard.push({
-      teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: scheduled ? 0 : pts(x.pts), isMe: String(x.id) === myId })),
+      teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: teamTotal(x), isMe: String(x.id) === myId })),
     });
   }
 
