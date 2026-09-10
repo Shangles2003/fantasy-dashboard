@@ -7,8 +7,16 @@ const { gameFor } = require('../lib/nfl');
 
 const API = 'https://api.cbssports.com/fantasy';
 
+// Tolerate tokens pasted straight from page source, e.g.  "U2Fsd...";  or  CBSi.token = "U2Fsd..."
+function cleanToken(raw) {
+  let t = String(raw || '').trim();
+  const m = t.match(/["']([^"']+)["']/);
+  if (m) t = m[1];
+  return t.replace(/[\s;"']/g, '');
+}
+
 function url(path, account, params = {}) {
-  const q = new URLSearchParams({ version: '3.0', response_format: 'JSON', access_token: account.accessToken, ...params });
+  const q = new URLSearchParams({ version: '3.0', response_format: 'JSON', access_token: cleanToken(account.accessToken), ...params });
   return `${API}/${path}?${q}`;
 }
 
