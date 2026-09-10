@@ -92,6 +92,7 @@
           <button class="btn" data-add="sleeper">Sleeper</button>
           <button class="btn" data-add="espn">ESPN</button>
           <button class="btn" data-add="yahoo">Yahoo</button>
+          <button class="btn" data-add="cbs">CBS</button>
         </div>
         <details class="help">
           <summary>How to get credentials</summary>
@@ -101,6 +102,13 @@
           <p>Log in to fantasy.espn.com in your browser, open DevTools → Application → Cookies → <code>https://fantasy.espn.com</code>, and copy the values of <code>espn_s2</code> and <code>SWID</code>. Leagues are discovered automatically; if that fails, paste league IDs (from the league URL) separated by commas.</p>
           <h4>Yahoo</h4>
           <p>Create an app at <a href="https://developer.yahoo.com/apps/create/" target="_blank" rel="noopener">developer.yahoo.com/apps</a> (Installed Application, API permission "Fantasy Sports – Read"). Paste the Client ID and Client Secret, save, then click <b>Connect Yahoo</b>, approve, and paste the code Yahoo shows you.</p>
+          <h4>CBS</h4>
+          <p>CBS uses a per-league access token, so add one CBS entry per league. Log in at cbssports.com and open your league's home page (<code>yourleague.football.cbssports.com</code>). Then either:</p>
+          <ul>
+            <li>View the page source (Ctrl+U) and search for <code>token</code>. Copy the long value from <code>var token = "…"</code>; or</li>
+            <li>Open DevTools → Network, filter for <code>api.cbssports.com</code>, click any request, and copy the <code>access_token</code> value from its URL.</li>
+          </ul>
+          <p>Enter the league subdomain (the <code>yourleague</code> part) and the token.</p>
         </details>
         <h3>Refresh</h3>
         <div class="grid2">

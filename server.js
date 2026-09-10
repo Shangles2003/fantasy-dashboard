@@ -11,8 +11,9 @@ const ADAPTERS = {
   sleeper: require('./adapters/sleeper'),
   espn: require('./adapters/espn'),
   yahoo: require('./adapters/yahoo'),
+  cbs: require('./adapters/cbs'),
 };
-const SECRET_FIELDS = ['espn_s2', 'clientSecret'];
+const SECRET_FIELDS = ['espn_s2', 'clientSecret', 'accessToken'];
 const MASK = '********';
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -121,7 +122,8 @@ function scheduleNext() {
 function aggregatePlayers(leagues) {
   const map = new Map();
   const add = (p, league, side) => {
-    const key = p.name ? nameKey(p.name, p.pos) : `${league.platform}:${p.id}`;
+    // Team defenses are named differently on every platform, so key them by NFL team instead
+    const key = p.pos === 'DEF' && p.team ? `dst|${p.team}` : p.name ? nameKey(p.name, p.pos) : `${league.platform}:${p.id}`;
     let agg = map.get(key);
     if (!agg) {
       agg = {
@@ -144,6 +146,7 @@ function aggregatePlayers(leagues) {
       agg.stats = p.stats;
       agg.statLine = p.statLine;
     }
+    if (!agg.stats && !agg.statLine && p.statLine) agg.statLine = p.statLine;
     if (!agg.injury && p.injury) agg.injury = p.injury;
     const entry = {
       league: league.key,

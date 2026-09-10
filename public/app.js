@@ -5,7 +5,7 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtPts = (n) => (n == null ? '—' : Number(n).toFixed(2).replace(/\.?0+$/, '') || '0');
-  const PLATFORM_NAME = { sleeper: 'Sleeper', espn: 'ESPN', yahoo: 'Yahoo' };
+  const PLATFORM_NAME = { sleeper: 'Sleeper', espn: 'ESPN', yahoo: 'Yahoo', cbs: 'CBS' };
 
   let state = null;
   let config = null;
@@ -258,6 +258,11 @@
       { k: 'label', label: 'Label (optional)' },
       { k: 'clientId', label: 'Client ID' },
       { k: 'clientSecret', label: 'Client Secret', secret: true },
+    ],
+    cbs: [
+      { k: 'label', label: 'Label (optional)' },
+      { k: 'leagueName', label: 'League subdomain (the part before .football.cbssports.com)' },
+      { k: 'accessToken', label: 'Access token', secret: true },
     ],
   };
   let draft = null;

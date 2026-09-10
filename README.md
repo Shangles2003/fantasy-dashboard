@@ -1,6 +1,6 @@
 # Fantasy HQ
 
-One dashboard for every fantasy football league you're in, across **Sleeper**, **ESPN** and **Yahoo**. Open it on game day and see, in one place:
+One dashboard for every fantasy football league you're in, across **Sleeper**, **ESPN**, **Yahoo** and **CBS**. Open it on game day and see, in one place:
 
 - Every matchup you're playing this week, with live scores, projections and how many of your starters are live / done / still to play.
 - Every player you roster anywhere, which leagues they're in (and whether they're starting or benched), their live NFL game clock, their stat line, and their points in each league.
@@ -23,6 +23,7 @@ Then open <http://localhost:3000>, click **Settings**, and add your accounts. Co
 | Sleeper | Your username | Public API, no login. All your leagues are found automatically. |
 | ESPN | `espn_s2` and `SWID` cookies | Log in at fantasy.espn.com, DevTools → Application → Cookies. Leagues are discovered from your account; if that fails, paste league IDs. |
 | Yahoo | A Yahoo developer app (Client ID + Secret) | Create one at <https://developer.yahoo.com/apps/create/> as an *Installed Application* with Fantasy Sports read permission. Save it in Settings, click **Connect Yahoo**, approve, paste the code back. |
+| CBS | League subdomain + per-league access token | CBS's legacy v3 API still works. Log in, open your league page, and copy the token from the page source (`var token = "…"`) or from any `api.cbssports.com` request's `access_token` in DevTools → Network. One entry per league. |
 
 ## How refresh works
 
