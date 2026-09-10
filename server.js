@@ -4,15 +4,20 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { getNfl } = require('./lib/nfl');
 const { nameKey } = require('./lib/util');
 
-const ADAPTERS = {
-  sleeper: require('./adapters/sleeper'),
-  espn: require('./adapters/espn'),
-  yahoo: require('./adapters/yahoo'),
-  cbs: require('./adapters/cbs'),
-};
+// Adapters and lib modules are re-required on every refresh so fixes to them take effect
+// without restarting the server. (Changes to server.js itself still need a restart.)
+function loadAdapters() {
+  for (const k of Object.keys(require.cache)) if (/[\/](adapters|lib)[\/]/.test(k)) delete require.cache[k];
+  return {
+    sleeper: require('./adapters/sleeper'),
+    espn: require('./adapters/espn'),
+    yahoo: require('./adapters/yahoo'),
+    cbs: require('./adapters/cbs'),
+  };
+}
+let ADAPTERS = loadAdapters();
 const SECRET_FIELDS = ['espn_s2', 'clientSecret', 'accessToken'];
 const MASK = '********';
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -66,9 +71,14 @@ async function refresh(reason = 'timer') {
   const started = Date.now();
   const warnings = [];
   const ctx = { warn: (m) => warnings.push(m) };
+  try {
+    ADAPTERS = loadAdapters();
+  } catch (e) {
+    warnings.push(`Adapter reload failed, using previous code: ${e.message}`);
+  }
   let nfl = state.nfl;
   try {
-    nfl = await getNfl();
+    nfl = await require('./lib/nfl').getNfl();
   } catch (e) {
     warnings.push(`NFL scoreboard unavailable: ${e.message}`);
     nfl = { ...nfl, byTeam: nfl.byTeam || {} };
