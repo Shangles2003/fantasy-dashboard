@@ -47,8 +47,19 @@ async function discoverLeagues(account, season, hdr) {
   const explicit = (account.leagueIds || []).map((x) => String(x).trim()).filter(Boolean);
   if (explicit.length) return explicit;
   const swid = hdr.swid;
-  const url = `https://fan.espn.com/apis/v2/fans/${encodeURIComponent(swid)}?displayEvents=false&displayNow=false&displayRecs=false&platform=web&lang=en&region=us&source=espn`;
-  const data = await fetchJson(url, { headers: hdr.headers });
+  // ESPN moved its "fan" profile API from fan.espn.com to fan.api.espn.com; try both.
+  let data = null;
+  let lastErr = null;
+  for (const host of ['fan.api.espn.com', 'fan.espn.com']) {
+    const url = `https://${host}/apis/v2/fans/${encodeURIComponent(swid)}?displayEvents=false&displayNow=false&displayRecs=false&platform=web&lang=en&region=us&source=espn`;
+    try {
+      data = await fetchJson(url, { headers: hdr.headers }, { retries: 0 });
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!data) throw new Error(`ESPN league discovery failed (${lastErr && lastErr.message}). Add league IDs manually in Settings.`);
   const ids = new Set();
   for (const p of data.preferences || []) {
     const entry = p.metaData && p.metaData.entry;
@@ -140,17 +151,19 @@ async function fetchLeague(leagueId, season, hdr, ctx) {
   };
 
   const mkTeam = (t, side) => {
-    const entries = (side && side.rosterForCurrentScoringPeriod && side.rosterForCurrentScoringPeriod.entries) || (t.roster && t.roster.entries) || [];
+    // ESPN's matchup view strips player identity from its per-period roster, so use the team's
+    // full roster (mRoster for this scoringPeriodId): it carries names, slots, live points and projections.
+    const entries = (t.roster && t.roster.entries) || [];
     const roster = entries.map((e) => playerFromEntry(e, week, ctx));
     const starters = roster.filter((p) => p.starter);
-    const live = starters.reduce((s, p) => s + p.points, 0);
-    const points = side && side.totalPointsLive != null ? side.totalPointsLive : side && side.totalPoints ? side.totalPoints : live;
+    const liveTotal = starters.reduce((s, p) => s + p.points, 0);
+    const points = side && side.totalPointsLive != null ? side.totalPointsLive : side && side.totalPoints ? side.totalPoints : liveTotal;
     return {
       id: String(t.id),
       name: teamName(t),
       owner: ownerName(t),
       record: record(t),
-      points: round1(Math.max(points, live)),
+      points: round1(Math.max(points, liveTotal)),
       projected: starters.length && starters.every((p) => p.projected != null) ? round1(starters.reduce((s, p) => s + p.projected, 0)) : null,
       roster,
     };
