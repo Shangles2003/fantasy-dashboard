@@ -69,6 +69,7 @@
     const typ = { 1: 'Preseason', 2: '', 3: 'Playoffs' }[n.seasonType] || '';
     $('#week-label').textContent = n.week ? `${n.season} · ${typ ? typ + ' ' : ''}Week ${n.week}${n.anyLive ? ' · games in progress' : ''}` : 'NFL week unknown';
     $('#updated').textContent = state.refreshing ? 'refreshing…' : `updated ${ago(state.updatedAt)}`;
+    if (state.user) $('#user-name').textContent = state.user.name;
   }
 
   function renderBanner() {
@@ -349,8 +350,31 @@
     $('#refresh-live').value = draft.refresh.live;
     $('#refresh-idle').value = draft.refresh.idle;
     $('#settings-status').textContent = '';
+    $('#pw-status').textContent = '';
+    $('#pw-current').value = '';
+    $('#pw-next').value = '';
     renderAccounts();
+    renderAdmin();
     $('#settings').hidden = false;
+  }
+  function renderAdmin() {
+    const isAdmin = !!(config.user && config.user.admin && config.admin);
+    $('#admin-section').hidden = !isAdmin;
+    if (!isAdmin) return;
+    $('#invite-code').textContent = config.admin.inviteCode;
+    $('#register-url').textContent = `${location.origin}/register`;
+    $('#users-list').innerHTML = `<table class="players" style="margin-top:8px"><thead><tr><th>User</th><th>Leagues connected</th><th>Joined</th><th></th></tr></thead><tbody>${config.admin.users
+      .map((u) => `<tr><td>${esc(u.name)}${u.admin ? ' <span class="pmeta">admin</span>' : ''}</td><td>${u.accountCount} account${u.accountCount === 1 ? '' : 's'}</td><td class="pmeta">${new Date(u.createdAt).toLocaleDateString()}</td><td>${u.name === config.user.name ? '' : `<button class="btn small danger" data-deluser="${u.id}" data-name="${esc(u.name)}">Remove</button>`}</td></tr>`)
+      .join('')}</tbody></table>`;
+    $('#invite-regen').onclick = async () => {
+      const r = await (await fetch('/api/admin/invite', { method: 'POST' })).json();
+      if (r.inviteCode) { config.admin.inviteCode = r.inviteCode; $('#invite-code').textContent = r.inviteCode; }
+    };
+    $$('#users-list [data-deluser]').forEach((b) => (b.onclick = async () => {
+      if (!confirm(`Remove ${b.dataset.name}? Their connected leagues are deleted from this server.`)) return;
+      const r = await fetch(`/api/admin/users/${b.dataset.deluser}`, { method: 'DELETE' });
+      if (r.ok) { config.admin.users = config.admin.users.filter((u) => u.id !== b.dataset.deluser); renderAdmin(); }
+    }));
   }
   function closeSettings() {
     $('#settings').hidden = true;
@@ -402,7 +426,7 @@
       renderAccounts();
     }));
     $$('#accounts [data-ydisc]').forEach((b) => (b.onclick = async () => {
-      await fetch('/api/yahoo/disconnect', { method: 'POST' });
+      await fetch('/api/yahoo/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: +b.dataset.ydisc }) });
       draft.accounts[+b.dataset.ydisc].connected = false;
       renderAccounts();
     }));
@@ -413,20 +437,31 @@
     s.className = bad ? 'status-bad' : 'status-ok';
   }
   async function saveSettings() {
-    draft.refresh = { live: +$('#refresh-live').value, idle: +$('#refresh-idle').value };
+    const body = { accounts: draft.accounts };
+    if (config.user && config.user.admin) body.refresh = { live: +$('#refresh-live').value, idle: +$('#refresh-idle').value };
     draft.accounts.forEach((a, i) => { if (!a.id) a.id = `${a.platform}-${Date.now()}-${i}`; });
-    const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
+    const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) return setStatus('Save failed: ' + (await r.text()), true);
-    config = await r.json();
+    const saved = await r.json();
+    config = { ...config, ...saved };
     setStatus('Saved. Refreshing leagues…');
     setTimeout(closeSettings, 600);
     setTimeout(load, 1500);
+  }
+  async function changePassword() {
+    const s = $('#pw-status');
+    const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: $('#pw-current').value, next: $('#pw-next').value }) });
+    const j = await r.json().catch(() => ({}));
+    s.className = r.ok ? 'status-ok' : 'status-bad';
+    s.textContent = r.ok ? 'Password changed.' : j.error || 'Failed';
+    if (r.ok) { $('#pw-current').value = ''; $('#pw-next').value = ''; }
   }
 
   // ---------- data loop ----------
   async function load() {
     try {
       const r = await fetch('/api/state');
+      if (r.status === 401) { location.href = '/login'; return; }
       state = await r.json();
       if (!config) config = await (await fetch('/api/config')).json();
       render();
@@ -440,6 +475,7 @@
   $('#btn-settings').onclick = openSettings;
   $('#settings-close').onclick = closeSettings;
   $('#settings-save').onclick = saveSettings;
+  $('#pw-save').onclick = changePassword;
   $$('[data-add]').forEach((b) => (b.onclick = () => { draft.accounts.push({ platform: b.dataset.add }); renderAccounts(); }));
   $('#drawer-close').onclick = closeDrawer;
   $('#drawer-backdrop').onclick = closeDrawer;

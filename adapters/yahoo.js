@@ -8,7 +8,10 @@ const { gameFor } = require('../lib/nfl');
 const AUTH = 'https://api.login.yahoo.com/oauth2/request_auth';
 const TOKEN = 'https://api.login.yahoo.com/oauth2/get_token';
 const API = 'https://fantasysports.yahooapis.com/fantasy/v2';
-const TOKEN_FILE = 'yahoo_token.json';
+// One token file per configured Yahoo account (each user connects their own Yahoo login)
+function tokenFile(account) {
+  return account && account.id ? `yahoo_token_${String(account.id).replace(/[^\w.-]/g, '_')}.json` : 'yahoo_token.json';
+}
 
 const STAT_MAP = {
   1: 'passAtt', 2: 'passCmp', 4: 'passYd', 5: 'passTd', 6: 'passInt',
@@ -40,7 +43,7 @@ async function tokenRequest(account, params) {
   if (!res.ok) throw new Error(`Yahoo token error ${res.status}: ${text.slice(0, 200)}`);
   const tok = JSON.parse(text);
   tok.expires_at = Date.now() + (num(tok.expires_in, 3600) - 60) * 1000;
-  writeJson(TOKEN_FILE, tok);
+  writeJson(tokenFile(account), tok);
   return tok;
 }
 
@@ -49,7 +52,7 @@ async function exchangeCode(account, code) {
 }
 
 async function getToken(account) {
-  let tok = readJson(TOKEN_FILE);
+  let tok = readJson(tokenFile(account));
   if (!tok || !tok.access_token) throw new Error('Yahoo not connected yet. Open Settings and connect Yahoo.');
   if (Date.now() >= (tok.expires_at || 0)) {
     tok = await tokenRequest(account, { grant_type: 'refresh_token', redirect_uri: 'oob', refresh_token: tok.refresh_token });
@@ -57,13 +60,13 @@ async function getToken(account) {
   return tok.access_token;
 }
 
-function isConnected() {
-  const tok = readJson(TOKEN_FILE);
+function isConnected(account) {
+  const tok = readJson(tokenFile(account));
   return !!(tok && tok.refresh_token);
 }
 
-function disconnect() {
-  writeJson(TOKEN_FILE, {});
+function disconnect(account) {
+  writeJson(tokenFile(account), {});
 }
 
 async function yget(account, path) {

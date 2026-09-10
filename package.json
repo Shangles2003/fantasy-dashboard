@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check adapters/sleeper.js && node --check adapters/espn.js && node --check adapters/yahoo.js && node --check public/app.js"
+    "check": "node --check server.js && node --check adapters/sleeper.js && node --check adapters/espn.js && node --check adapters/yahoo.js && node --check public/app.js",
+    "test": "node test/security-smoke.js"
   },
   "engines": {
     "node": ">=18"

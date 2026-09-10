@@ -26,6 +26,7 @@
       <span class="updated" id="updated">—</span>
       <button class="btn" id="btn-refresh" title="Refresh now">↻ Refresh</button>
       <button class="btn" id="btn-settings">⚙ Settings</button>
+      <a class="btn" id="btn-logout" href="/logout" title="Sign out"><span id="user-name"></span> ⎋</a>
     </div>
   </header>
 
@@ -96,7 +97,7 @@
         <button class="btn icon" id="settings-close" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
-        <p class="muted">Connect each fantasy app you use. Credentials are stored only in <code>config.json</code> on this computer.</p>
+        <p class="muted">Connect each fantasy app you use. Only you can see your leagues; credentials are stored on this server and never shown again once saved.</p>
         <div id="accounts"></div>
         <div class="add-row">
           <span>Add:</span>
@@ -121,10 +122,25 @@
           </ul>
           <p>Enter the league subdomain (the <code>yourleague</code> part) and the token.</p>
         </details>
-        <h3>Refresh</h3>
+        <h3>Your password</h3>
         <div class="grid2">
-          <label>During live games (sec) <input type="number" id="refresh-live" min="10" /></label>
-          <label>Otherwise (sec) <input type="number" id="refresh-idle" min="30" /></label>
+          <label>Current password <input type="password" id="pw-current" autocomplete="current-password" /></label>
+          <label>New password <input type="password" id="pw-next" autocomplete="new-password" /></label>
+        </div>
+        <div class="add-row"><button class="btn small" id="pw-save">Change password</button><span class="muted" id="pw-status"></span></div>
+        <div id="admin-section" hidden>
+          <h3>Members (admin)</h3>
+          <p class="muted">Give this invite code to people you want to add. They register at <code id="register-url"></code> and connect their own leagues.</p>
+          <div class="add-row">
+            <span>Invite code:</span> <code id="invite-code" style="font-size:15px;padding:4px 10px"></code>
+            <button class="btn small" id="invite-regen" title="Generate a new code; the old one stops working">New code</button>
+          </div>
+          <div id="users-list"></div>
+          <h3>Refresh</h3>
+          <div class="grid2">
+            <label>During live games (sec) <input type="number" id="refresh-live" min="10" /></label>
+            <label>Otherwise (sec) <input type="number" id="refresh-idle" min="30" /></label>
+          </div>
         </div>
       </div>
       <div class="modal-foot">

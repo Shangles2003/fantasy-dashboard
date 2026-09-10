@@ -14,7 +14,20 @@ No npm dependencies. Just Node 18+.
 node server.js
 ```
 
-Then open <http://localhost:3000>, click **Settings**, and add your accounts. Config is saved to `config.json` (git-ignored) on this machine only.
+Then open <http://localhost:3000>. The first visit asks you to create an account (that account is the admin). Click **Settings** to connect your fantasy accounts.
+
+## Multiple people, each with their own leagues
+
+Every member signs in with their own username and password and connects their own Sleeper / ESPN / Yahoo / CBS accounts. Nobody can see anyone else's leagues or credentials.
+
+- The **first account created is the admin**. In Settings the admin sees an **invite code** and the member list.
+- To add someone, give them the invite code and the address; they open `/register`, pick a username and password, enter the code, and connect their leagues in Settings.
+- The admin can generate a new invite code at any time (the old one stops working) and remove members.
+- Anyone can change their own password in Settings; doing so signs out every other device.
+
+Security notes: passwords are stored as salted scrypt hashes; sessions are random tokens stored hashed on the server, in HttpOnly SameSite cookies (marked Secure over HTTPS); sign-in and registration are rate-limited; state-changing requests must come from the site's own origin; the app sends a strict Content-Security-Policy and related headers; platform secrets (cookies, tokens) are never returned to the browser after saving; the container runs as an unprivileged user. `npm test` runs a smoke test that exercises all of this (isolation between users, admin gating, CSRF, rate limits, traversal, revocation).
+
+Upgrading a single-user install: your existing accounts are moved to the first user automatically. On a hosted copy that used `FHQ_PASSWORD`, that becomes user `admin` with the same password.
 
 ## Connecting platforms
 
@@ -52,7 +65,7 @@ Environment variables the server understands:
 
 | Variable | Purpose |
 |---|---|
-| `FHQ_PASSWORD` | Require a sign-in. **Set this before exposing the app to the internet.** |
+| `FHQ_PASSWORD` | Only used once, to migrate a pre-multi-user install: becomes the password of user `admin`. New installs create the admin account in the browser instead. |
 | `FHQ_DATA_DIR` | Directory for `config.json`, tokens and caches (mount a persistent disk here) |
 | `PORT` | Port to listen on (defaults to `config.json`'s `port`, i.e. 3000) |
 
