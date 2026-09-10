@@ -38,7 +38,7 @@ function pts(v) {
   return round1(num(String(v == null ? 0 : v).trim()));
 }
 
-function player(p, projMap, ctx) {
+function player(p, projMap, ctx, scheduled) {
   const status = String(p.status || 'Active');
   const starter = status === 'Active';
   let pos = String(p.position || '').toUpperCase();
@@ -50,6 +50,10 @@ function player(p, projMap, ctx) {
   const name = pos === 'DEF' ? `${p.fullname || team} D/ST` : p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim();
   const injury = p.icons && p.icons.injury ? String(p.icons.injury).split(':')[0] : '';
   const proj = projMap[String(p.id)];
+  const game = gameFor(ctx.nfl, team);
+  // CBS reports stale points from the previous period until the week's games start; ignore them
+  // while the matchup is still scheduled or the player's NFL game hasn't kicked off.
+  const notStarted = scheduled || game.state === 'pre';
   return {
     id: String(p.id),
     name,
@@ -58,11 +62,11 @@ function player(p, projMap, ctx) {
     injury,
     slot,
     starter,
-    points: pts(p.fpts_period != null ? p.fpts_period : p.fpts),
+    points: notStarted ? 0 : pts(p.fpts_period != null ? p.fpts_period : p.fpts),
     projected: proj != null ? pts(proj) : null,
     stats: null,
-    statLine: String(p.stats_period || '').trim(),
-    game: gameFor(ctx.nfl, team),
+    statLine: notStarted ? '' : String(p.stats_period || '').trim(),
+    game,
   };
 }
 
@@ -90,6 +94,7 @@ async function fetchLeague(account, leagueId, ctx) {
   const oppId = myRaw.opp_team_id != null ? String(myRaw.opp_team_id) : (myRaw.matchups && myRaw.matchups[0] && String(myRaw.matchups[0].opponent_team_id)) || '';
   const oppRaw = oppId ? teams.find((t) => String(t.id) === oppId) : null;
   const week = num(ls.period, ctx.week || 1);
+  const scheduled = String(ls.matchup_status || '').toLowerCase() === 'scheduled';
 
   // Projections come from the rosters resource (optional)
   const projMap = {};
@@ -104,15 +109,16 @@ async function fetchLeague(account, leagueId, ctx) {
   }
 
   const mkTeam = (t) => {
-    const roster = (t.players || []).map((p) => player(p, projMap, ctx));
+    const roster = (t.players || []).map((p) => player(p, projMap, ctx, scheduled));
     const starters = roster.filter((p) => p.starter);
     const live = round1(starters.reduce((s, p) => s + p.points, 0));
+    const teamPts = scheduled ? live : Math.max(pts(t.pts), live);
     return {
       id: String(t.id),
       name: t.name || t.long_abbr || `Team ${t.id}`,
       owner: '',
       record: `${num(t.w)}-${num(t.l)}${num(t.t) ? `-${num(t.t)}` : ''}`,
-      points: Math.max(pts(t.pts), live),
+      points: teamPts,
       projected: starters.length && starters.every((p) => p.projected != null) ? round1(starters.reduce((s, p) => s + p.projected, 0)) : null,
       roster,
     };
@@ -129,7 +135,7 @@ async function fetchLeague(account, leagueId, ctx) {
     seen.add(id);
     if (o) seen.add(oid);
     scoreboard.push({
-      teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: pts(x.pts), isMe: String(x.id) === myId })),
+      teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: scheduled ? 0 : pts(x.pts), isMe: String(x.id) === myId })),
     });
   }
 
