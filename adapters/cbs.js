@@ -53,7 +53,7 @@ function player(p, projMap, ctx, scheduled) {
   const game = gameFor(ctx.nfl, team);
   // CBS reports stale points from the previous period until the week's games start; ignore them
   // while the matchup is still scheduled or the player's NFL game hasn't kicked off.
-  const notStarted = scheduled || game.state === 'pre';
+  const notStarted = scheduled || game.state === 'pre' || game.state === 'none';
   return {
     id: String(p.id),
     name,
