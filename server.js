@@ -33,12 +33,21 @@ const COOKIE = 'fhq';
 const DEFAULT_CONFIG = { port: 3000, refresh: { live: 30, idle: 300 }, accounts: [] };
 
 function loadConfig() {
+  let c = null;
   try {
-    const c = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    return { ...DEFAULT_CONFIG, ...c, refresh: { ...DEFAULT_CONFIG.refresh, ...(c.refresh || {}) }, accounts: c.accounts || [] };
+    c = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
-    return { ...DEFAULT_CONFIG, accounts: [] };
+    // Hosts without a persistent disk can supply the whole config as JSON in FHQ_CONFIG
+    if (process.env.FHQ_CONFIG) {
+      try {
+        c = JSON.parse(process.env.FHQ_CONFIG);
+      } catch (e) {
+        console.error('FHQ_CONFIG is not valid JSON:', e.message);
+      }
+    }
   }
+  if (!c) return { ...DEFAULT_CONFIG, accounts: [] };
+  return { ...DEFAULT_CONFIG, ...c, refresh: { ...DEFAULT_CONFIG.refresh, ...(c.refresh || {}) }, accounts: c.accounts || [] };
 }
 function saveConfig(c) {
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });

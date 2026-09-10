@@ -1,0 +1,15 @@
+# Render.com blueprint: free web service. Free instances sleep after 15 min idle and have no disk,
+# so keep it awake with an external pinger on /healthz and put your settings in FHQ_CONFIG.
+services:
+  - type: web
+    name: fantasy-hq
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: FHQ_DATA_DIR
+        value: /tmp/fhq
+      - key: FHQ_PASSWORD
+        sync: false
+      - key: FHQ_CONFIG
+        sync: false

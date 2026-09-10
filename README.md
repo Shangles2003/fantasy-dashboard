@@ -76,6 +76,34 @@ fly deploy
 
 Then open `https://<your-app-name>.fly.dev` on your phone, sign in, add your accounts in Settings (they're stored on the disk, not on your PC), and use **Add to Home Screen** for an app-style icon. Redeploy any time you change the code with `fly deploy`.
 
+### Free option A: an always-free cloud VM (recommended)
+
+Google Cloud gives one **e2-micro** VM free forever (regions `us-west1`, `us-central1`, `us-east1`); Oracle Cloud's *Always Free* tier is similar. Both ask for a card to verify identity but don't charge for this. The VM runs the app 24/7 with its own disk, so nothing sleeps and settings persist.
+
+1. Push this project to a GitHub repo (nothing secret is in it; `config.json` and `data/` are git-ignored).
+2. Get a free hostname at <https://www.duckdns.org> (e.g. `myleagues.duckdns.org`).
+3. Create the VM (Google: Compute Engine → Create instance → e2-micro, Debian, allow HTTP + HTTPS traffic). Note its external IP and set it as the DuckDNS IP.
+4. Open the VM's browser SSH and run:
+
+```bash
+sudo apt-get install -y git
+git clone https://github.com/<you>/fantasy-dashboard.git
+cd fantasy-dashboard/deploy
+DOMAIN=myleagues.duckdns.org FHQ_PASSWORD='choose-a-password' ./setup-vm.sh
+```
+
+That installs Docker and starts the app behind Caddy, which fetches a free HTTPS certificate. Open `https://myleagues.duckdns.org` on your phone, sign in, add accounts in Settings. To update later: `git pull && sudo docker compose up -d --build` in the `deploy` folder.
+
+### Free option B: Render (quickest, slightly hacky)
+
+Render's free web service sleeps after 15 minutes without traffic and has no persistent disk.
+
+1. Push the project to GitHub, then on <https://render.com> choose **New → Blueprint** and pick the repo (`render.yaml` sets everything up on the free plan).
+2. In the service's Environment tab set `FHQ_PASSWORD`, and set `FHQ_CONFIG` to your whole config as one line of JSON, e.g. `{"accounts":[{"platform":"sleeper","username":"you"},{"platform":"cbs","leagueName":"torfl","accessToken":"..."}]}` (copy it from your local `config.json`).
+3. Keep it awake: at <https://cron-job.org> (free) create a job that requests `https://<your-service>.onrender.com/healthz` every 5 minutes.
+
+Downsides: a cold start takes ~30 s if the pinger misses, and Yahoo tokens / the CBS stale-score memory reset whenever Render restarts the service.
+
 ## API
 
 - `GET /api/state` — everything the dashboard renders
