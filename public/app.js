@@ -9,7 +9,9 @@
 
   let state = null;
   let config = null;
-  let filters = { state: 'all', startersOnly: false, showAgainst: false, q: '' };
+  let filters = { state: 'all', startersOnly: false, q: '' };
+  let view = 'mine'; // mine | against | matchups
+  try { view = localStorage.getItem('fhq-view') || 'mine'; } catch { /* ignore */ }
   let openLeague = null;
 
   // ---------- helpers ----------
@@ -48,8 +50,18 @@
     renderBanner();
     renderGames();
     renderCards();
-    renderPlayers();
+    renderView();
     if (openLeague) renderDrawer(openLeague);
+  }
+
+  function renderView() {
+    $$('#view-switch button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+    const isMatchups = view === 'matchups';
+    $('#players-wrap').hidden = isMatchups;
+    $('#matchups-view').hidden = !isMatchups;
+    $('#player-filters').hidden = isMatchups;
+    if (isMatchups) renderMatchups();
+    else renderPlayers();
   }
 
   function renderHeader() {
@@ -171,38 +183,102 @@
 
   function chip(e, against) {
     const cls = ['chip', e.starter ? '' : 'bench', against ? 'against' : ''].filter(Boolean).join(' ');
-    const title = `${PLATFORM_NAME[e.platform]} · ${e.leagueName}${against ? ' (opponent\'s player)' : ''}${e.projected != null ? ` · proj ${fmtPts(e.projected)}` : ''}`;
-    return `<span class="${cls}" title="${esc(title)}"><span class="dot ${e.platform}"></span>${esc(e.leagueName)} <span class="slot">${esc(e.slot)}</span> <span class="cpts">${fmtPts(e.points)}</span></span>`;
+    const title = `${PLATFORM_NAME[e.platform]} · ${e.leagueName}${against ? ` · on ${e.opponent}, playing your ${e.myTeam}` : e.opponent ? ` · vs ${e.opponent}` : ''}${e.projected != null ? ` · proj ${fmtPts(e.projected)}` : ''}`;
+    const who = against && e.opponent ? ` <span class="vs">(${esc(e.opponent)})</span>` : '';
+    return `<span class="${cls}" title="${esc(title)}"><span class="dot ${e.platform}"></span>${esc(e.leagueName)}${who} <span class="slot">${esc(e.slot)}</span> <span class="cpts">${fmtPts(e.points)}</span></span>`;
   }
 
   function renderPlayers() {
     const tbody = $('#players tbody');
+    const against = view === 'against';
+    $('#players-col').textContent = against ? 'Opponent · league · points' : 'Leagues & points';
     const q = filters.q.trim().toLowerCase();
     const rows = (state.players || []).filter((p) => {
-      if (!filters.showAgainst && !p.mine.length) return false;
-      const entries = filters.showAgainst ? [...p.mine, ...p.against] : p.mine;
+      const entries = against ? p.against : p.mine;
+      if (!entries.length) return false;
       if (filters.startersOnly && !entries.some((e) => e.starter)) return false;
       const st = p.game ? p.game.state : 'none';
       if (filters.state !== 'all' && st !== filters.state) return false;
       if (q) {
-        const hay = `${p.name} ${p.team} ${p.pos} ${entries.map((e) => e.leagueName).join(' ')}`.toLowerCase();
+        const hay = `${p.name} ${p.team} ${p.pos} ${entries.map((e) => `${e.leagueName} ${e.opponent || ''}`).join(' ')}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
     $('#players-empty').hidden = rows.length > 0;
+    $('#players-empty').textContent = against ? 'No opponent players match. (Opponents\' starters only.)' : 'No players match.';
     tbody.innerHTML = rows
       .map((p) => {
-        const mine = filters.startersOnly ? p.mine.filter((e) => e.starter) : p.mine;
-        const against = filters.showAgainst ? (filters.startersOnly ? p.against.filter((e) => e.starter) : p.against) : [];
+        const all = against ? p.against : p.mine;
+        const entries = filters.startersOnly ? all.filter((e) => e.starter) : all;
         return `<tr class="${p.game ? p.game.state : ''}">
           <td><span class="pname">${esc(p.name)}</span>${p.injury ? `<span class="inj">${esc(p.injury)}</span>` : ''}<div class="pmeta">${esc(p.pos)} · ${esc(p.team || 'FA')}</div></td>
           <td>${gameLabel(p.game)}</td>
           <td><div class="statline">${esc(p.statLine || (p.game && p.game.state === 'pre' ? '' : '—'))}</div></td>
-          <td><div class="chips">${mine.map((e) => chip(e, false)).join('')}${against.map((e) => chip(e, true)).join('')}</div></td>
+          <td><div class="chips">${entries.map((e) => chip(e, against)).join('')}</div></td>
         </tr>`;
       })
       .join('');
+  }
+
+  // ---------- matchups view ----------
+  function muCell(p, theirs) {
+    if (!p) return `<td class="who ${theirs ? 'theirs' : ''}"><span class="muted">—</span></td>`;
+    return `<td class="who ${theirs ? 'theirs' : ''}">
+      <div><span class="pname">${esc(p.name)}</span>${p.injury ? `<span class="inj">${esc(p.injury)}</span>` : ''} <span class="pmeta">${esc(p.pos)} ${esc(p.team)}</span></div>
+      <div class="sub">${gameLabel(p.game)}</div>${p.statLine ? `<div class="sub muted">${esc(p.statLine)}</div>` : ''}
+    </td>`;
+  }
+  function muPts(p, theirs, lead) {
+    if (!p) return `<td class="pts ${theirs ? 'theirs' : 'mine'}"></td>`;
+    return `<td class="pts ${theirs ? 'theirs' : 'mine'} ${lead ? 'lead' : ''}">${fmtPts(p.points)}${p.projected != null ? `<div class="sub muted">${fmtPts(p.projected)}</div>` : ''}</td>`;
+  }
+  function renderMatchups() {
+    const el = $('#matchups-view');
+    const leagues = (state.leagues || []).filter((l) => !l.error);
+    if (!leagues.length) {
+      el.innerHTML = '<div class="muted">No leagues loaded.</div>';
+      return;
+    }
+    el.innerHTML = leagues
+      .map((lg) => {
+        const me = lg.myTeam;
+        const opp = lg.opponent;
+        const myS = me.roster.filter((p) => p.starter);
+        const opS = opp ? opp.roster.filter((p) => p.starter) : [];
+        const n = Math.max(myS.length, opS.length);
+        const lead = opp ? (me.points > opp.points ? 'me' : opp.points > me.points ? 'opp' : '') : '';
+        const rows = [];
+        for (let i = 0; i < n; i++) {
+          const a = myS[i];
+          const b = opS[i];
+          const slot = (a && a.slot) || (b && b.slot) || '';
+          const done = a && b && a.game.state === 'post' && b.game.state === 'post';
+          const aLead = a && b && a.points > b.points;
+          const bLead = a && b && b.points > a.points;
+          rows.push(`<tr class="${done ? 'done' : ''}">${muPts(a, false, aLead)}${muCell(a, false)}<td class="slot">${esc(slot)}</td>${muCell(b, true)}${muPts(b, true, bLead)}</tr>`);
+        }
+        const mp = rosterProgress(me);
+        const op = opp ? rosterProgress(opp) : null;
+        return `<div class="mu">
+          <div class="mu-head">
+            <span><span class="badge ${lg.platform}">${esc(PLATFORM_NAME[lg.platform])}</span> <span class="name">${esc(lg.name)}</span></span>
+            <span class="pmeta">${esc(lg.scoring || '')} · Wk ${lg.week} · <a href="#" data-open="${esc(lg.key)}">full rosters</a></span>
+          </div>
+          <div class="mu-score">
+            <div><div class="tname">${esc(me.name)} <span class="pmeta">${esc(me.record || '')}</span></div><div class="pts ${lead === 'me' ? 'leading' : ''}">${fmtPts(me.points)}</div><div class="proj">${me.projected != null ? 'proj ' + fmtPts(me.projected) : ''}</div></div>
+            <div class="muted">vs</div>
+            ${opp ? `<div class="right"><div class="tname">${esc(opp.name)} <span class="pmeta">${esc(opp.record || '')}</span></div><div class="pts ${lead === 'opp' ? 'leading' : ''}">${fmtPts(opp.points)}</div><div class="proj">${opp.projected != null ? 'proj ' + fmtPts(opp.projected) : ''}</div></div>` : '<div class="right muted">No matchup this week</div>'}
+          </div>
+          ${opp ? `<table><tbody>${rows.join('')}</tbody></table>` : ''}
+          <div class="mu-foot">
+            <span>${mp.in ? `<span class="pill live">● ${mp.in} live</span> ` : ''}<span class="pill pre">${mp.pre} to play</span> <span class="pill post">${mp.post} done</span></span>
+            ${op ? `<span>${op.in ? `<span class="pill live">● ${op.in} live</span> ` : ''}<span class="pill pre">${op.pre} to play</span> <span class="pill post">${op.post} done</span></span>` : ''}
+          </div>
+        </div>`;
+      })
+      .join('');
+    $$('#matchups-view [data-open]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); openDrawer(a.dataset.open); }));
   }
 
   // ---------- drawer ----------
@@ -370,8 +446,8 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeSettings(); } });
   $$('#state-filter button').forEach((b) => (b.onclick = () => { $$('#state-filter button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); filters.state = b.dataset.state; renderPlayers(); }));
   $('#starters-only').onchange = (e) => { filters.startersOnly = e.target.checked; renderPlayers(); };
-  $('#show-against').onchange = (e) => { filters.showAgainst = e.target.checked; renderPlayers(); };
   $('#search').oninput = (e) => { filters.q = e.target.value; renderPlayers(); };
+  $$('#view-switch button').forEach((b) => (b.onclick = () => { view = b.dataset.view; try { localStorage.setItem('fhq-view', view); } catch { /* ignore */ } if (state) renderView(); }));
 
   load();
   setInterval(load, 15000);

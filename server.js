@@ -156,6 +156,8 @@ function aggregatePlayers(leagues) {
       starter: p.starter,
       points: p.points,
       projected: p.projected,
+      myTeam: league.myTeam ? league.myTeam.name : '',
+      opponent: league.opponent ? league.opponent.name : '',
     };
     (side === 'mine' ? agg.mine : agg.against).push(entry);
     agg.maxPoints = Math.max(agg.maxPoints, p.points || 0);

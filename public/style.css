@@ -102,6 +102,7 @@ main { padding: 16px 20px 60px; max-width: 1400px; margin: 0 auto; display: flex
 .seg button { background: var(--surface); color: var(--text-2); border: 0; padding: 5px 10px; font: inherit; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button.active { background: var(--surface-2); color: var(--text); }
+.seg.big button { padding: 7px 14px; font-weight: 600; }
 .check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
 input[type="search"], input[type="text"], input[type="number"], input[type="password"], textarea { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
 input[type="search"] { min-width: 220px; }
@@ -130,7 +131,35 @@ table.players tr.in td:first-child { box-shadow: inset 3px 0 0 var(--live); }
 .chip .cpts { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; }
 .chip .slot { color: var(--muted); font-size: 11px; }
 .chip.bench { opacity: 0.55; }
-.chip.against { border-style: dashed; border-color: var(--bad); }
+.chip.against { border-color: var(--bad); }
+.chip .vs { color: var(--muted); font-size: 11px; }
+
+/* Matchups view */
+.matchups { display: grid; grid-template-columns: repeat(auto-fill, minmax(600px, 1fr)); gap: 12px; }
+.mu { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.mu-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mu-head .name { font-weight: 600; }
+.mu-score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mu-score .tname { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mu-score .right { text-align: right; }
+.mu-score .pts { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 700; line-height: 1.1; }
+.mu-score .pts.leading { color: var(--live); }
+.mu-score .proj { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+.mu table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mu td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.mu tr:last-child td { border-bottom: 0; }
+.mu td.pts { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; width: 52px; white-space: nowrap; }
+.mu td.pts.mine { text-align: left; }
+.mu td.pts.theirs { text-align: right; }
+.mu td.pts.lead { color: var(--live); }
+.mu td.slot { text-align: center; color: var(--muted); font-family: var(--mono); font-size: 11px; width: 52px; background: var(--surface-2); }
+.mu td.who { min-width: 0; }
+.mu td.who.theirs { text-align: right; }
+.mu .pname { font-weight: 600; }
+.mu .sub { font-size: 11px; }
+.mu tr.done td.who, .mu tr.done td.pts { opacity: 0.75; }
+.mu-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-2); }
+@media (max-width: 720px) { .matchups { grid-template-columns: 1fr; } }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 
 /* Drawer */

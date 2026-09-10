@@ -37,8 +37,12 @@
 
     <section>
       <div class="section-head">
-        <h2>My players</h2>
-        <div class="filters">
+        <div class="seg big" id="view-switch">
+          <button data-view="mine" class="active">My players</button>
+          <button data-view="against">Opponents' players</button>
+          <button data-view="matchups">Matchups</button>
+        </div>
+        <div class="filters" id="player-filters">
           <div class="seg" id="state-filter">
             <button data-state="all" class="active">All</button>
             <button data-state="in">● Live</button>
@@ -46,24 +50,24 @@
             <button data-state="post">Final</button>
           </div>
           <label class="check"><input type="checkbox" id="starters-only" /> Starters only</label>
-          <label class="check"><input type="checkbox" id="show-against" /> Show opponents' players</label>
           <input type="search" id="search" placeholder="Search player / team / league" />
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap" id="players-wrap">
         <table class="players" id="players">
           <thead>
             <tr>
               <th>Player</th>
               <th>Game</th>
               <th>Stat line</th>
-              <th>Leagues &amp; points</th>
+              <th id="players-col">Leagues &amp; points</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
         <div class="empty" id="players-empty" hidden>No players match.</div>
       </div>
+      <div class="matchups" id="matchups-view" hidden></div>
     </section>
   </main>
 
