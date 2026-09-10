@@ -4,6 +4,24 @@
 // network requests to api.cbssports.com. One CBS account entry = one league.
 const { fetchJson, normTeam, num, round1 } = require('../lib/util');
 const { gameFor } = require('../lib/nfl');
+const { readJson, writeJson } = require('../lib/cache');
+
+// CBS's live feed carries each player's numbers from the previous period into the new one and only
+// replaces them once that player records a stat. Individual players reset at kickoff, but team units
+// (D/ST, team QB) and kickers keep stale values well into a game. So we remember every player's value
+// while their game is still 'pre' and treat an unchanged value after kickoff as stale.
+const BASELINE_FILE = 'cbs_baseline.json';
+let baselineCache = null;
+function baselineFor(key) {
+  if (!baselineCache) baselineCache = readJson(BASELINE_FILE, {}) || {};
+  const league = key.split(':')[0];
+  for (const k of Object.keys(baselineCache)) if (k.startsWith(`${league}:`) && k !== key) delete baselineCache[k];
+  if (!baselineCache[key]) baselineCache[key] = {};
+  return baselineCache[key];
+}
+function saveBaseline() {
+  if (baselineCache) writeJson(BASELINE_FILE, baselineCache);
+}
 
 const API = 'https://api.cbssports.com/fantasy';
 
@@ -38,7 +56,7 @@ function pts(v) {
   return round1(num(String(v == null ? 0 : v).trim()));
 }
 
-function player(p, projMap, ctx, scheduled) {
+function player(p, projMap, ctx, scheduled, base) {
   const status = String(p.status || 'Active');
   const starter = status === 'Active';
   let pos = String(p.position || '').toUpperCase();
@@ -54,18 +72,33 @@ function player(p, projMap, ctx, scheduled) {
   // CBS reports stale points from the previous period until the week's games start; ignore them
   // while the matchup is still scheduled or the player's NFL game hasn't kicked off.
   const notStarted = scheduled || game.state === 'pre' || game.state === 'none';
+  const id = String(p.id);
+  const rawPts = pts(p.fpts_period != null ? p.fpts_period : p.fpts);
+  const rawLine = String(p.stats_period || '').trim();
+  let points = rawPts;
+  let line = rawLine;
+  if (notStarted) {
+    base[id] = { p: rawPts, s: rawLine };
+    points = 0;
+    line = '';
+  } else if (base[id] && base[id].p === rawPts && base[id].s === rawLine && (rawPts !== 0 || rawLine)) {
+    points = 0; // unchanged since before kickoff: stale carry-over
+    line = '';
+  } else {
+    delete base[id];
+  }
   return {
-    id: String(p.id),
+    id,
     name,
     pos,
     team,
     injury,
     slot,
     starter,
-    points: notStarted ? 0 : pts(p.fpts_period != null ? p.fpts_period : p.fpts),
+    points,
     projected: proj != null ? pts(proj) : null,
     stats: null,
-    statLine: notStarted ? '' : String(p.stats_period || '').trim(),
+    statLine: line,
     game,
   };
 }
@@ -95,6 +128,7 @@ async function fetchLeague(account, leagueId, ctx) {
   const oppRaw = oppId ? teams.find((t) => String(t.id) === oppId) : null;
   const week = num(ls.period, ctx.week || 1);
   const scheduled = String(ls.matchup_status || '').toLowerCase() === 'scheduled';
+  const base = baselineFor(`${leagueId}:${ctx.season}:${week}`);
 
   // Projections come from the rosters resource (optional)
   const projMap = {};
@@ -109,7 +143,7 @@ async function fetchLeague(account, leagueId, ctx) {
   }
 
   const mkTeam = (t) => {
-    const roster = (t.players || []).map((p) => player(p, projMap, ctx, scheduled));
+    const roster = (t.players || []).map((p) => player(p, projMap, ctx, scheduled, base));
     const starters = roster.filter((p) => p.starter);
     const live = round1(starters.reduce((s, p) => s + p.points, 0));
     const teamPts = live; // never trust CBS's team total: it carries stale numbers into a new period
@@ -134,12 +168,13 @@ async function fetchLeague(account, leagueId, ctx) {
     const o = oid ? teams.find((x) => String(x.id) === oid) : null;
     seen.add(id);
     if (o) seen.add(oid);
-    const teamTotal = (x) => round1((x.players || []).map((p) => player(p, projMap, ctx, scheduled)).filter((p) => p.starter).reduce((sum, p) => sum + p.points, 0));
+    const teamTotal = (x) => round1((x.players || []).map((p) => player(p, projMap, ctx, scheduled, base)).filter((p) => p.starter).reduce((sum, p) => sum + p.points, 0));
     scoreboard.push({
       teams: [t, o].filter(Boolean).map((x) => ({ id: String(x.id), name: x.name || x.long_abbr, points: teamTotal(x), isMe: String(x.id) === myId })),
     });
   }
 
+  saveBaseline();
   const d = details.league_details || {};
   const sub = String(account.leagueName || '').trim();
   return {
